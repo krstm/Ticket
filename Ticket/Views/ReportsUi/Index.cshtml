@@ -1,0 +1,128 @@
+@model IReadOnlyCollection<Ticket.DTOs.Responses.ReportBucketDto>
+@{
+    ViewData["Title"] = "Insights Dashboard";
+    var trendData = ViewBag.TrendData as IReadOnlyCollection<Ticket.DTOs.Responses.ReportBucketDto> ?? Array.Empty<Ticket.DTOs.Responses.ReportBucketDto>();
+}
+
+<div class="space-y-8">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">System Insights</h2>
+            <p class="mt-2 text-slate-500">Analytics and trends for request management performance.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <select class="btn btn-secondary text-sm py-2">
+                <option>Last 30 Days</option>
+                <option>Last 7 Days</option>
+                <option>Last 12 Months</option>
+            </select>
+            <button class="btn btn-primary text-sm py-2">Export Data</button>
+        </div>
+    </div>
+
+    <!-- Quick Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        @foreach (var bucket in Model)
+        {
+            <div class="card p-6 flex flex-col justify-between">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">@bucket.Bucket</span>
+                <div class="flex items-end justify-between">
+                    <span class="text-4xl font-black text-slate-900 leading-none">@bucket.Count</span>
+                    <div class="h-8 w-1/2 bg-primary-50 rounded-lg overflow-hidden flex items-end">
+                        <div class="w-full bg-primary-500/20" style="height: @(bucket.Count * 2)px"></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Trend Chart -->
+        <div class="card p-8">
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-widest mb-6 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                Request Trend
+            </h3>
+            <div class="h-64 relative">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Distribution Chart -->
+        <div class="card p-8">
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-widest mb-6 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
+                Status Distribution
+            </h3>
+            <div class="h-64 relative">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Trend Chart
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            const trendData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(trendData));
+            
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: trendData.map(b => b.Bucket),
+                    datasets: [{
+                        label: 'Requests',
+                        data: trendData.map(b => b.Count),
+                        borderColor: '#3b68f6',
+                        backgroundColor: 'rgba(59, 104, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#3b68f6',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [5, 5] }, ticks: { font: { family: 'Inter' } } },
+                        x: { grid: { display: false }, ticks: { font: { family: 'Inter' } } }
+                    }
+                }
+            });
+
+            // Status Distribution Chart
+            const statusCtx = document.getElementById('statusChart').getContext('2d');
+            const summaryData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model));
+
+            new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: summaryData.map(b => b.Bucket),
+                    datasets: [{
+                        data: summaryData.map(b => b.Count),
+                        backgroundColor: ['#3b68f6', '#10b981', '#f59e0b', '#64748b', '#ef4444'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: { position: 'right', labels: { boxWidth: 10, padding: 20, font: { family: 'Inter', weight: 'bold' } } }
+                    }
+                }
+            });
+        });
+    </script>
+}

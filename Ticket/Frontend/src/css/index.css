@@ -1,0 +1,52 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+@layer base {
+    body {
+        @apply bg-slate-50 text-slate-900 antialiased;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+
+    .btn-primary {
+        @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500 shadow-sm hover:shadow-md;
+    }
+
+    .btn-secondary {
+        @apply bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-slate-500 shadow-sm;
+    }
+
+    .card {
+        @apply bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden;
+    }
+
+    .input-field {
+        @apply block w-full rounded-lg border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm transition-colors;
+    }
+
+    .badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    }
+
+    .nav-link {
+        @apply flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors;
+        @apply text-slate-600 hover:bg-slate-50 hover:text-primary-600;
+    }
+
+    .nav-link.active {
+        @apply bg-primary-50 text-primary-700;
+    }
+
+    .nav-link svg {
+        @apply text-slate-400 group-hover:text-primary-500;
+    }
+
+    .nav-link.active svg {
+        @apply text-primary-600;
+    }
+}

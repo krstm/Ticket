@@ -106,7 +106,6 @@ public class ApplicationDbContext : DbContext
         ticket.HasIndex(x => x.Status);
         ticket.HasIndex(x => x.Priority);
         ticket.HasIndex(x => x.TitleNormalized);
-        ticket.HasIndex(x => x.DescriptionNormalized);
 
         var rowVersionProperty = ticket.Property(x => x.RowVersion)
             .IsConcurrencyToken()

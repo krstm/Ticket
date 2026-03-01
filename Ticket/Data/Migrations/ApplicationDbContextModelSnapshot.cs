@@ -78,7 +78,7 @@ namespace Ticket.Data.Migrations
                     b.Property<string>("DescriptionNormalized")
                         .IsRequired()
                         .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(5000)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset?>("DueAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -140,8 +140,6 @@ namespace Ticket.Data.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("CreatedAtUtc");
-
-                    b.HasIndex("DescriptionNormalized");
 
                     b.HasIndex("Priority");
 
@@ -260,6 +258,10 @@ namespace Ticket.Data.Migrations
                         {
                             b1.Property<Guid>("TicketId")
                                 .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Channel")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)");
 
                             b1.Property<bool>("IsExternal")
                                 .HasColumnType("bit")

@@ -5,7 +5,7 @@
 namespace Ticket.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class RightSizingDataAccess : Migration
+    public partial class RightSizingAndMetadata : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -23,8 +23,15 @@ namespace Ticket.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "DescriptionNormalized",
                 table: "Tickets",
-                type: "nvarchar(5000)",
+                type: "nvarchar(max)",
                 maxLength: 5000,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<string>(
+                name: "Metadata_Channel",
+                table: "Tickets",
+                type: "nvarchar(max)",
                 nullable: false,
                 defaultValue: "");
 
@@ -72,11 +79,6 @@ namespace Ticket.Data.Migrations
                 defaultValue: "");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Tickets_DescriptionNormalized",
-                table: "Tickets",
-                column: "DescriptionNormalized");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Tickets_TitleNormalized",
                 table: "Tickets",
                 column: "TitleNormalized");
@@ -86,15 +88,15 @@ namespace Ticket.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "IX_Tickets_DescriptionNormalized",
-                table: "Tickets");
-
-            migrationBuilder.DropIndex(
                 name: "IX_Tickets_TitleNormalized",
                 table: "Tickets");
 
             migrationBuilder.DropColumn(
                 name: "DescriptionNormalized",
+                table: "Tickets");
+
+            migrationBuilder.DropColumn(
+                name: "Metadata_Channel",
                 table: "Tickets");
 
             migrationBuilder.DropColumn(
