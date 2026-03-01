@@ -1,206 +1,192 @@
-# Ticket Platform ‚Äì Architecture & Operations Guide
+# Ticket Platform - Architecture & Operations Guide
 
-This document is intentionally verbose so that a developer (or another LLM with zero additional context) can reconstruct the entire project by reading it alone. It covers the application‚Äôs intent, every folder and artifact, the request lifecycle, key services/methods, data modeling, security posture, and operational guidance.
+This guide is intentionally exhaustive so a future engineer (or another LLM with zero repo context) can reconstruct the entire backend by reading it alone. It documents intent, folder responsibilities, data modelling, MediatR domain events, paging/search behaviours, security posture, and operational knobs.
 
 ---
 
 ## 1. Product Intent & Scope
 
-1. Ticket submission portal where unauthenticated users can raise requests (for now there is no identity module, so the caller supplies requester/recipient metadata manually).
-2. Shared workspace for ‚Äúcounterpart‚Äù teams to triage, filter, and report on incoming tickets.
-3. Enforce enterprise-grade logging, validation, sanitization, rate limiting, and structured error handling from day one.
-4. Enable category management, timeline display, and reporting capabilities without relying on an external SPA (plain MVC views are enough for now).
-
-> Everything lives inside a single ASP.NET Core MVC project (`Ticket/`), but the internal structure is layered to mimic a DDD/service-oriented design.
+1. Public-facing ticket intake for requesters that do **not** authenticate yet (requester/recipient metadata is supplied manually for now).
+2. Workspace for counterpart teams to triage, filter, and report on tickets, including category management and reporting dashboards.
+3. Enterprise guardrails from day one: centralized logging, FluentValidation on every DTO, HTML sanitization, rate limiting, API-key protection for admin routes, and RFC-7807 error envelopes.
+4. Razor views remain minimal; focus is on a clean MVC backend (single Ticket/ project) that exposes JSON APIs plus a simple timeline view. Future mail/identity features must be pluggable without rewriting core services.
 
 ---
 
-## 2. Directory Map & Responsibilities
+## 2. Directory Layout Cheat-Sheet
 
 | Path | Purpose / Notes |
 | --- | --- |
-| `Controllers/` | Request boundary. Includes `TicketsController` (CRUD+query), `CategoriesController` (API-key protected management), `ReportsController` (summary/trend endpoints), and `HomeController` (timeline view). All controllers return JSON except `HomeController`, which renders a Razor table. |
-| `Domain/Entities` | EF Core entities: `Ticket` (aggregate root), `Category`, `TicketHistory`, `BaseEntity` (Id, timestamps, soft-delete, RowVersion). |
-| `Domain/ValueObjects` | Immutable owned types: `TicketContactInfo` and `TicketMetadata`. Stored inside `Ticket` as owned components. |
-| `Domain/Enums` | Priority/status/sort/report enums. `TicketStatus` drives workflow, `TicketPriority` drives urgency, `TicketSortBy` and `SortDirection` drive query ordering, `ReportGroupBy`/`ReportInterval` control reporting. |
-| `Domain/Rules` | `TicketStatusTransitionRules` is the single source of truth for allowed status transitions (e.g., `Resolved ‚Üí Closed` allowed, `Resolved ‚Üí New` forbidden). |
-| `DTOs/Requests` | Shapes the HTTP request payloads: `TicketCreateRequest`, `TicketUpdateRequest`, `TicketStatusUpdateRequest`, `TicketQueryParameters`, `CategoryCreate/UpdateRequest`, `ReportQuery`. |
-| `DTOs/Responses` | API responses: `PagedResult<T>`, `TicketSummaryDto`, `TicketDetailsDto` (+ history/contact info), `CategoryDto`, `ReportBucketDto`. |
-| `DTOs/ViewModels` | Only `TimelineItemViewModel` for the Home page (chronological list). |
-| `Interfaces/` | Abstractions for repositories (`ITicketRepository`, `ICategoryRepository`, `IUnitOfWork`) and services (`ITicketService`, `ICategoryService`, `IReportingService`, `IAuditLogService`) plus infra contracts (`IClock`, `IContentSanitizer`, `IApiKeyValidator`). |
-| `Services/` | Implementation of business workflows: `TicketService`, `CategoryService`, `ReportingService`, `AuditLogService`, `SystemClock`, `HtmlContentSanitizer`, `ApiKeyValidator`. |
-| `Repositories/` | EF Core data access wrappers. `TicketRepository` owns filtering/sorting projections; `CategoryRepository` handles uniqueness + activity toggles; `UnitOfWork` forward `SaveChangesAsync`. |
-| `Validators/` | FluentValidation rules ensuring every inbound DTO is correct (length constraints, enum combos, pagination limits, etc.). |
-| `Middleware/` | `CorrelationIdMiddleware` (injects `X-Correlation-Id` header + logging scope) and `ExceptionHandlingMiddleware` (catches all exceptions and returns RFC-7807 `ProblemDetails`). |
-| `Filters/` | `ValidateModelFilter` (short-circuits invalid model state) and `ApiKeyAuthorizeAttribute` (simple API-key gate for category management). |
-| `ModelBinding/` | `TrimmingModelBinder` & provider ‚Äì trims all incoming strings and converts empty strings to `null`. |
-| `Extensions/` | `ServiceCollectionExtensions` wires DI, AutoMapper, FluentValidation, rate limiting, EF Core; `ApplicationBuilderExtensions` arranges middleware order and the default route. |
-| `Configuration/` | Options POCOs used with `IOptions<T>`: `ApiKeyOptions`, `RateLimitingOptions`. |
-| `Mapping/` | AutoMapper profile mapping Entities ‚áÑ DTOs/ViewModels (includes history ordering). |
-| `Data/` | `ApplicationDbContext` (with provider-aware row-version emulation for SQLite/InMemory), `DesignTimeDbContextFactory`, and EF migrations in `Data/Migrations/`. |
-| `Views/` | Minimal Razor views; currently the Home timeline uses a table to list latest tickets. |
-| `wwwroot/` | Placeholder for static content (empty for now). |
-| `docs/` | Architecture and testing guides (this file + `testing.md`). Keep these updated as the single source of truth for new contributors or LLM agents. |
-| `Ticket.Tests/` | Separate test project (see `docs/testing.md` for detailed breakdown). |
+| Controllers/ | Request boundaries (TicketsController, CategoriesController, ReportsController, HomeController). APIs return JSON; Home renders the timeline table. |
+| Domain/Entities | EF Core entities (Ticket, Category, TicketHistory, BaseEntity). BaseEntity now owns DomainEvents so MediatR can react after each SaveChanges. |
+| Domain/ValueObjects | Owned types (TicketContactInfo, TicketMetadata). Stored inline inside the Ticket row. |
+| Domain/Enums & Rules | Enum definitions plus TicketStatusTransitionRules (single source of truth for workflow transitions) and TicketSearchScope. |
+| Domain/Support | Helpers such as SearchNormalizer. |
+| Domain/EventHandlers | MediatR handlers (TicketHistoryHandler, AuditLogHandler, NotificationPlaceholderHandler). They consume domain events instead of the services calling auditing code directly. |
+| Domain/Events | Records for TicketCreatedEvent, TicketStatusChangedEvent, TicketResolvedEvent. |
+| DTOs/Requests|Responses|ViewModels | Wire formats for controllers, API responses, Razor view models, and pagination wrappers (PagedResult<T> with NextPageToken). |
+| Interfaces/Services | Service contracts (ITicketService, ICategoryService, IReportingService, INotificationService). Repository contracts were deletedóservices talk to ApplicationDbContext directly. |
+| Interfaces/Infrastructure | Cross-cutting abstractions (IClock, IContentSanitizer, IApiKeyValidator). |
+| Services/ | Business services (TicketService, CategoryService, ReportingService, NotificationPlaceholderService, plus infra helpers like SystemClock and HtmlContentSanitizer). |
+| Data/ApplicationDbContext | EF Core context with row-version emulation, soft-delete filters, normalized column configuration, and domain-event dispatch in SaveChangesAsync. |
+| Data/Querying | TicketQueryExtensions + TicketPageToken helpers that centralize filtering, sorting, keyset pagination, and projection logic. |
+| Configuration/ | Strongly typed options (ApiKeyOptions, RateLimitingOptions, NotificationOptions). |
+| Extensions/ | DI + pipeline wiring (ServiceCollectionExtensions, ApplicationBuilderExtensions). |
+| Middleware/, Filters/, ModelBinding/ | Correlation IDs, RFC-7807 exception handling, API-key filter, model trimming, validation filter. |
+| Mapping/ | AutoMapper profile ordering history descending and mapping entities to DTO/view-models. |
+| Views/ | Razor timeline view. UI intentionally plain. |
+| docs/ | This guide plus 	esting.md. Treat them as the canonical knowledge base for future work or LLM pair-programming sessions. |
+| Ticket.Tests/ | Unit/integration/security suites (see docs/testing.md). Includes utilities such as CustomWebApplicationFactory and TestNotificationService. |
 
 ---
 
-## 3. Data Model & Persistence Details
+## 3. Scale, Data-Access & Query Strategy
 
-### 3.1 Entities
-- **BaseEntity**: `Guid Id`, `DateTimeOffset CreatedAtUtc/UpdatedAtUtc`, `bool IsDeleted`, `byte[] RowVersion`. RowVersion is stored as a SQL Server rowversion when available; on SQLite/InMemory tests it is emulated via GUID bytes (see `ApplicationDbContext.ApplyEmulatedRowVersions`).
-- **Ticket**: Title, Description, `TicketPriority`, `TicketStatus`, `int CategoryId`, request/recipient contact info, metadata flags, optional `DueAtUtc`, optional `ReferenceCode`, `ICollection<TicketHistory> History`. Owned value objects ensure EF stores their columns inline.
-- **Category**: Id, Name (unique, case-insensitive), Description, `IsActive`, timestamps. No rowversion because SQLite cannot auto-generate one and categories rarely conflict.
-- **TicketHistory**: Immutable log per status/action change (Status, Action text, Note, ChangedBy, OccurredAtUtc).
-
-### 3.2 DbContext Highlights
-- Query filters exclude soft-deleted tickets.
-- Indexes: ticket `CreatedAtUtc`, `CategoryId`, `Status`, `Priority`; category `Name` (unique) and `IsActive`; history `OccurredAtUtc`.
-- Owned navigation configuration ensures contact info fields are renamed (e.g., `RequesterEmail` column).
-- Provider-aware concurrency: `ConfigureTicket` only calls `.IsRowVersion()` when provider supports it.
-- Save pipeline ensures RowVersion is refreshed for tracked entities even under InMemory (important for tests).
+- **Workload assumptions:** Approximately 5k tickets/year on a single SQL Server. No replicas or sharding, but all timestamps are stored in UTC for future geo scenarios.
+- **Repository/UoW removal:** Prior repositories leaked EF-specific flags (sTracking, includeHistory) and added boilerplate. Services now accept ApplicationDbContext directly, keeping EF features explicit while the shared logic lives inside Data/Querying/TicketQueryExtensions.
+- **Normalized search columns:** At write time, TicketService populates TitleNormalized, DescriptionNormalized, contact/email normalized fields, and ReferenceCodeNormalized using SearchNormalizer. EF indexes those columns so case-insensitive LIKE filters reuse B-Tree indexes without calling .ToLower().
+- **Filtering helpers:** TicketQueryExtensions.ApplyFilters/ApplySorting/ProjectToSummary encapsulate LINQ expressions so every controller/service uses exactly the same predicate definitions. This avoids duplicating Contains logic and makes search hardening testable.
+- **Keyset + offset pagination:** Offset paging (page/pageSize) still exists for backwards compatibility and returns TotalCount. When clients pass a PageToken, the service enforces SortBy=CreatedAt DESC, uses the encoded token (Base64("{timestamp}|{servedWithinTimestamp}|{ticketId}")) to skip already-served rows, and returns a new NextPageToken. Tokens never expose raw IDsóthey are opaque strings safe to log and expire naturally when data changes.
+- **Why no CQRS/MediatR pipelines for queries?** For this scale, bespoke query handlers would be ceremony. Instead, domain events are reserved for side effects (history/audit/notifications) while read paths stay synchronous and easy to debug.
+- **Staying keyset-ready:** Even though keyset paging still hits the same table, the TicketPageToken format records how many rows with the final timestamp were already served. That prevents duplicates when many tickets share identical CreatedAtUtc values without needing GUID comparisons (which SQL Server cannot order efficiently in EF LINQ).
+- **Future search/messaging headroom:** The domain-event pipeline already emits TicketCreatedEvent, TicketStatusChangedEvent, and TicketResolvedEvent. Adding mail/webhook handlers later will be a matter of registering new INotificationHandler<T> implementationsóno changes to TicketService needed.
 
 ---
 
-## 4. Request Lifecycle
+## 4. Data Model & Persistence Highlights
 
-1. **Hosting & Logging**: Program wires Serilog (console + rolling file) reading `appsettings.json`. When tests run, `WebApplicationFactory` uses InMemory DB.
-2. **Middleware Order**:
-   1. `UseSerilogRequestLogging`
-   2. `CorrelationIdMiddleware` (adds header + logging scope)
-   3. `ExceptionHandlingMiddleware` (wraps everything else)
-   4. `UseHttpsRedirection` + static files
-   5. `UseRouting`
-   6. `UseRateLimiter`
-   7. `UseAuthorization`
-3. **Controllers**: `[ApiController]` on API controllers automatically produces typed `ProblemDetails`. The Home controller remains an MVC controller but consumes `ITicketService` to populate a timeline view model.
-4. **Filters & Validation**:
-   - `ValidateModelFilter` ensures modelstate errors are converted to 400 responses (AJAX-friendly).
-   - `ApiKeyAuthorizeAttribute` runs before category mutations and compares `X-API-Key` header to config.
-   - FluentValidation auto-registration validates every DTO (requests include nested validators for contact info).
-5. **Services**:
-   - Enforce domain rules (status transitions), sanitize body text, set timestamps (`IClock`), log via `ILogger`.
-   - `TicketService` also writes to `TicketHistory` and delegates to `AuditLogService`.
-6. **Repositories**:
-   - Accept `TicketQueryParameters` and build LINQ expressions. Search functionality is case-insensitive and SQLite-friendly.
-   - Sorting uses safe projections (ticks) so SQLite order-by limitations on `DateTimeOffset` do not break tests.
-7. **Response**:
-   - AutoMapper mapping + `PagedResult<T>`.
-   - Errors: `ExceptionHandlingMiddleware` maps known exceptions (NotFound, Conflict, Validation, etc.) to correct status codes. Unknown errors become sanitized 500 responses (message hidden when not in Development).
+### 4.1 Entities & Columns
+- **BaseEntity**: Id, CreatedAtUtc, UpdatedAtUtc, IsDeleted, RowVersion, plus a List<IDomainEvent> used by the MediatR dispatcher.
+- **Ticket**: Core fields plus normalized columns and owned value objects. Relationships: Ticket -> Category (many-to-one), Ticket -> TicketHistory (one-to-many). Soft-deleted tickets are filtered automatically.
+- **Category**: Case-insensitive unique Name, optional Description, IsActive. Used by reporting/grouping.
+- **TicketHistory**: Immutable audit rows written by the MediatR TicketHistoryHandler. It references the parent ticket but does not raise events (prevents recursion).
+
+### 4.2 ApplicationDbContext
+- Configures normalized columns, indexes (CreatedAtUtc, Status, Priority, CategoryId, normalized fields), and row-version behaviour. SQLite/InMemory providers emulate rowversion with GUID bytes.
+- Overrides SaveChangesAsync to:
+  1. Emulate rowversion if the provider lacks it.
+  2. Collect pending domain events from tracked BaseEntity instances.
+  3. Clear the entity event lists.
+  4. Publish events through MediatR **after** the commit so handlers only run on successful saves.
+- TicketHistories has a query filter so fetching history for soft-deleted tickets automatically hides them.
 
 ---
 
-## 5. Services & Method Cheat-Sheet
+## 5. Request Lifecycle & Domain Events
 
-### `TicketService`
-| Method | Core Responsibilities |
+1. **Pipeline:** UseSerilogRequestLogging õ CorrelationIdMiddleware õ ExceptionHandlingMiddleware õ HTTPS/static files õ routing õ fixed-window rate limiting (global + "mutations") õ authorization.
+2. **Validation:** [ApiController] + FluentValidation means every DTO gets automatic validation responses. TrimModelBinder removes whitespace-only payloads.
+3. **Controllers:** Slimóeach controller calls the relevant service and returns DTOs. Status-specific behaviour (e.g., If-Match header parsing) lives inside controllers so services remain HTTP-agnostic.
+4. **Services:**
+   - TicketService performs sanitization, validation, normalization, and row-version checks before issuing commands. It raises domain events instead of mutating history/log tables directly.
+   - CategoryService enforces uniqueness and active-state rules directly via _context queries.
+   - ReportingService runs LINQ to group by status/category/priority and supports day/week intervals.
+5. **Domain Event Handlers:**
+   - TicketHistoryHandler inserts TicketHistory rows (creation + status changes) using the same ApplicationDbContext scope.
+   - AuditLogHandler logs structured audit entries (action, ticket id, statuses, actors).
+   - NotificationPlaceholderHandler forwards events to INotificationService (currently a logging stub configured via NotificationOptions). Tests override this with TestNotificationService to assert events fired without hitting external systems.
+
+---
+
+## 6. Service Responsibilities & Helpers
+
+### TicketService
+| Method | Responsibilities |
 | --- | --- |
-| `SearchAsync` | Accepts `TicketQueryParameters`, defers to repository, returns paged summaries. Enforces page size clamp (1‚Äì100). |
-| `GetAsync` | Loads ticket + history; throws `NotFoundException` when missing. |
-| `CreateAsync` | Sanitizes description, ensures category exists & active, sets status = `New`, appends history entry ‚ÄúTicket created‚Äù, logs via `AuditLogService`. |
-| `UpdateAsync` | Checks RowVersion, re-validates category, re-sanitizes, updates metadata/contact info, logs. |
-| `UpdateStatusAsync` | Validates transition using `TicketStatusTransitionRules`, writes history entry with `ChangedBy` + optional note, updates RowVersion. |
+| SearchAsync | Builds a composable query via TicketQueryExtensions, projects directly to TicketSummaryDto, and either runs offset paging (with TotalCount) or keyset paging (using PageToken + TicketPageToken). Invalid tokens or unsupported sort orders return 400. |
+| GetAsync | No-tracking load of a ticket, category, and history. History ordering happens inside AutoMapper (descending by OccurredAtUtc). |
+| CreateAsync | Sanitizes description, normalizes fields, ensures category is active, sets timestamps from IClock, raises TicketCreatedEvent, and lets event handlers write history/log/notifications. |
+| UpdateAsync | Row-version guard, sanitization, normalization, timestamp updates. Does **not** touch historiesóonly domain events do. |
+| UpdateStatusAsync | Checks transition matrix, emits TicketStatusChangedEvent and (if resolving) TicketResolvedEvent, letting handlers append history and send notifications. |
+| Helpers | ApplyNormalization, MapContact, SanitizeDescription, SanitizeOptional, EnsureCategoryExists, ParsePageToken, SkipPreviouslyServed. |
 
-### `CategoryService`
-- `GetAllAsync(includeInactive)` returns sorted category list.
-- `CreateAsync` ensures normalized uniqueness (case-insensitive) and marks category active.
-- `UpdateAsync` toggles fields and active flag.
-- `DeactivateAsync` refuses if any ticket references the category (`AnyInCategoryAsync`).
-- `ReactivateAsync` switches `IsActive` back to true.
+### CategoryService
+- Query _context.Categories directly and uses _clock for timestamps.
+- Rejects deactivation when tickets still reference the category via _context.Tickets.IgnoreQueryFilters().
 
-### `ReportingService`
-- `GetSummaryAsync` groups tickets in date range by Category/Status/Priority and returns `ReportBucketDto`.
-- `GetStatusTrendAsync` builds day/week buckets for status counts.
+### ReportingService
+- Aggregates tickets with AsNoTracking() queries, taking date ranges from ReportQuery. Day/week alignment handled via helper method.
 
-### `AuditLogService`
-- Lightweight layer wrapping `ILogger`; called by `TicketService` to ensure every mutation is captured as structured logs.
+### TicketQueryExtensions
+- ApplyFilters ó centralizes search terms, category/status/priority filters, requester/recipient matches, created/due date ranges, and TicketSearchScope semantics (Title-only vs full content).
+- ApplySorting ó whitelisted sort expressions (CreatedAt, Priority, Status, CategoryName, DueAt) with deterministic tie-breakers (Id).
+- ProjectToSummary ó projection expression so EF performs server-side DTO shaping (no extra AutoMapper call on search).
 
-### `TicketRepository`
-- `SearchAsync` handles full-text search across multiple columns, filtering by categories/status/priority/dates/due range, as well as optional requester/recipient filters (case-insensitive).
-- Sorting uses `TicketSortBy`. For `DueAt` it orders by `DueAtUtc.HasValue` + ticks to prevent SQLite from throwing when ordering by nullable `DateTimeOffset`.
-- `GetByIdAsync` optionally tracks entity and includes history ordering.
-- `AnyInCategoryAsync` helps the category service guard deactivation.
+### TicketPageToken
+- Encodes {timestamp}|{servedWithinTimestamp}|{ticketId} to Base64. servedWithinTimestamp counts how many rows with that timestamp already appeared so the next page can skip them even when multiple tickets share the same CreatedAtUtc value.
 
-### `HtmlContentSanitizer`
-- Because `Ganss.XSS` was unavailable in the offline package feeds, a custom sanitizer strips `<script>` blocks and event attributes, then HTML-encodes the remaining string (preserving user text but neutralizing markup). Validators ensure sanitized output isn‚Äôt empty.
+### NotificationPlaceholderService
+- Reads NotificationOptions to decide whether to log stub notifications for create/resolve events. Production deployments will replace it with real mail/webhook services, while tests override it with TestNotificationService.
 
 ---
 
-## 6. Security & Compliance
+## 7. Security & Hardening
 
-1. **Input Validation**: FluentValidation for all DTOs, trimming binder to eliminate whitespace-only strings, explicit status transition guards.
-2. **Sanitization**: `HtmlContentSanitizer` + double-check in validators -> description cannot become empty post-sanitization. Razor automatically HTML-encodes output (so timeline view is safe).
-3. **Rate Limiting**:
-   - Global limiter: `FixedWindowRateLimiter` keyed by Remote IP (defaults: 100 requests/minute).
-   - ‚ÄúMutations‚Äù limiter: used via `[EnableRateLimiting("mutations")]` for POST/PUT/PATCH/DELETE. Tests override settings (limit 2, queue 0) to assert throttling.
-4. **API Key**: Category management endpoints require `X-API-Key` header matching `ApiKeys:CategoryManagement`. Replace with proper auth in the future.
-5. **Centralized Errors**: Maps exceptions to HTTP codes and scrubs stack traces when not in Development. Logs include correlation ID + request metadata.
-6. **Logging**: Serilog with `FromLogContext`, `WithMachineName`, `WithThreadId`, file sink storing 30 days of logs. `AuditLogService` adds semantic logs for domain events.
-7. **Transport Security**: `UseHsts`, `UseHttpsRedirection`, and the pipeline is ready for extra headers (CSP, XFO) once requirements are known.
+1. **Input validation:** FluentValidation enforces lengths, enums, pagination limits, and date ordering. Validators explicitly forbid using PageToken with page > 1.
+2. **Sanitization:** HtmlContentSanitizer strips scripts/event attributes. Tests assert persisted data differs from raw XSS input.
+3. **Rate limiting:** Global fixed window (default 100 req/min) plus a "mutations" policy applied to POST/PUT/PATCH/DELETE. Integration tests tighten the window to force deterministic 429s.
+4. **API keys:** CategoriesController uses ApiKeyAuthorizeAttribute to guard admin endpoints until real identity is added.
+5. **Centralized errors:** RFC-7807 responses include correlation IDs, hide stack traces outside Development, and map known exception types (BadRequestException, ConflictException, NotFoundException).
+6. **Transport + headers:** HTTPS redirection, HSTS (non-development), and space for future CSP/XFO headers.
+7. **Guardrails proven by tests:** Security suite covers API keys, XSS sanitization, rate limiting, SQL-injection-style filters, and invalid page tokens.
 
 ---
 
-## 7. Configuration & Operations
+## 8. Configuration & Operations
 
-### 7.1 AppSettings
-```jsonc
+`json
 {
-  "Serilog": { /* console + file sinks */ },
+  "Serilog": { "Using": ["Serilog.Sinks.Console", "Serilog.Sinks.File"], ... },
   "ConnectionStrings": {
     "TicketDb": "Server=(localdb)\\MSSQLLocalDB;Database=TicketDb;..."
   },
   "RateLimiting": { "PermitLimit": 100, "WindowSeconds": 60, "QueueLimit": 0 },
-  "ApiKeys": { "CategoryManagement": "SET-THIS-IN-SECRETS" }
+  "ApiKeys": { "CategoryManagement": "SET-THIS-IN-SECRETS" },
+  "Notifications": {
+    "NotifyOnTicketCreated": false,
+    "NotifyOnTicketResolved": false,
+    "PreferredChannel": "log"
+  }
 }
-```
-- In tests, the factory overrides RateLimiting settings (queue=0, limit=2) and uses InMemory DB.
-- In production, update `TicketDb` connection string and `ApiKeys` via user secrets or environment variables.
+`
 
-### 7.2 Build & Run
-1. `dotnet restore`
-2. `dotnet ef database update` (optional ‚Äì only if using SQL Server)
-3. `dotnet run --project Ticket`
-4. Browse https://localhost:{port}/tickets etc., or GET `/` for timeline view.
+- Local development uses LocalDB; integration tests swap to EF InMemory via CustomWebApplicationFactory.
+- NotificationOptions can be toggled to dry-run notification pipelines without touching code.
+- Logs land in Logs/log-*.txt; mount that folder when containerizing.
 
-### 7.3 Deployment Considerations
-- Containerization is straightforward since the project is a single ASP.NET Core app.
-- Logging folder `Logs/` is relative to the working directory; mount to persistent storage in production.
-- Rate limiting + API key values should be tuned per environment.
+**Build & Run:**
+1. dotnet restore
+2. dotnet ef database update (if SQL Server is enabled)
+3. dotnet run --project Ticket
+4. Browse https://localhost:{port}/tickets or / for the timeline.
 
 ---
 
-## 8. Testing & Quality Mandates
+## 9. Endpoint Summary
 
-- **Adversarial Suites:** Every new feature must ship with tests designed to break it (invalid payloads, stale row versions, malicious inputs, rate-limit abuse, etc.). ‚ÄúHappy path only‚Äù tests are forbidden.
-- **Database Isolation:** Automated tests never touch a real database. `CustomWebApplicationFactory` replaces the DbContext with `UseInMemoryDatabase` so test runs cannot damage shared resources. If a new test introduces any external dependency, isolation must be preserved (e.g., using containers or mocks).
-- **Docs as Contract:** Before onboarding a new subsystem or LLM, ensure `docs/architecture.md` and `docs/testing.md` reflect the latest flows and rules.
-
----
-
-## 9. Endpoints Overview
-
-| Method | Route | Description |
+| Method | Route | Notes |
 | --- | --- | --- |
-| `GET /tickets` | Query using `TicketQueryParameters`. Supports search term, categories, statuses, priorities, date/due ranges, requester/recipient, sort field/direction, page/pageSize. Returns `PagedResult<TicketSummaryDto>`. |
-| `GET /tickets/{id}` | Ticket details + history. |
-| `POST /tickets` | Create new ticket. Body `TicketCreateRequest`. Returns `TicketDetailsDto`. |
-| `PUT /tickets/{id}` | Update core fields. Requires `If-Match` header containing Base64 RowVersion. |
-| `PATCH /tickets/{id}/status` | Update status only. Respects transition matrix. Requires `If-Match`. |
-| `GET /categories?includeInactive=false` | List categories. |
-| `POST /categories` | Requires `X-API-Key`. Creates new category. |
-| `PUT /categories/{id}` | Requires API key. Updates name/description/isActive. |
-| `DELETE /categories/{id}` | Soft-deactivates (only if no tickets exist). |
-| `POST /categories/{id}/reactivate` | Reactivate. |
-| `GET /reports/summary` | Query via `ReportQuery` (`from`, `to`, `groupBy`). |
-| `GET /reports/trend` | Query via `ReportQuery` (`interval` controls day/week buckets). |
-| `GET /` | Home timeline ‚Äì shows latest 20 tickets sorted by `CreatedAtUtc DESC`. |
+| GET /tickets | Accepts TicketQueryParameters (SearchTerm, SearchScope, filters, sort, Page/PageSize, or PageToken). Returns PagedResult<TicketSummaryDto> with optional NextPageToken. |
+| GET /tickets/{id} | Returns TicketDetailsDto with contact info, metadata, and ordered history. |
+| POST /tickets | Creates a ticket; body TicketCreateRequest. Emits TicketCreatedEvent. |
+| PUT /tickets/{id} | Updates mutable fields; requires If-Match header (base64 rowversion). |
+| PATCH /tickets/{id}/status | Status-only update. Validates transition matrix, requires If-Match. Emits TicketStatusChangedEvent (+TicketResolvedEvent when applicable). |
+| GET /categories?includeInactive= | Lists categories, optionally including inactive ones. |
+| POST /categories | API-key protected; creates new category. |
+| PUT /categories/{id} | API-key protected; updates name/description/isActive. |
+| DELETE /categories/{id} | API-key protected soft-deactivate (blocked if tickets exist). |
+| POST /categories/{id}/reactivate | Reactivate a category. |
+| GET /reports/summary | Groups tickets by category/status/priority within a date range. |
+| GET /reports/trend | Status trends grouped by day or ISO week. |
+| GET / | Timeline view; fetches the latest 20 tickets using ITicketService.SearchAsync. |
 
 ---
 
-## 10. Future Enhancements
-- Authentication & Authorization (replace API key guard with proper policies).
-- Department dimension + assignment workflows once users exist.
-- Rich UI/UX (component library, live updates, filters) once the service layer stabilizes.
-- Notification/communication hooks (email/webhook) triggered from `TicketService`.
+## 10. Future Enhancements & Guardrails
 
-With this guide, a developer can open any file, understand its place in the system, and know how requests flow from entry point to database and back, including the strong logging/security envelope wrapped around every operation.
+- **Identity & authorization:** API-key filter is a placeholder. Domain events already carry ChangedBy strings so plugging Identity later only changes the caller, not the workflow.
+- **Mail/Webhooks:** Hook new MediatR handlers onto TicketCreatedEvent and TicketResolvedEvent. INotificationService already abstracts notification delivery.
+- **Full-text search / analytics:** Swap the normalized-column strategy for SQL Server Full-Text Search or an external engine when volume justifies it. Documented token format ensures keyset paging survives the migration.
+- **UI polish:** Razor view intentionally plain. When SPA requirements emerge, controllers already emit DTOs ready for a separate front-end.
+
+With this architecture, every behaviour (validation, normalization, paging, domain events, logging, security, testing) is documented and traceable, enabling future contributorsóor LLM copilotsóto extend the platform safely.

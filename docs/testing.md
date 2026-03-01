@@ -1,106 +1,111 @@
-# Ticket Platform – Testing Charter & Playbook
+# Ticket Platform - Testing Charter & Playbook
 
-This document is a “test constitution” for the repository. It is written so that any engineer (or any LLM without repo context) can fully understand how, why, and where tests live, and the hard rules the team follows.
-
----
-
-## 1. Core Principles (“Test Constitution”)
-
-1. **Full Capability Coverage:** Every feature must be exercised end-to-end, across all edge cases, failure paths, and security scenarios. A feature is considered “complete” only when its happy-path, sad-path, concurrency, and abuse cases are under automated test.
-2. **Real Database Isolation:** No automated test is allowed to talk to a shared/production database. All tests MUST run against disposable providers (InMemory/SQLite) or isolated containers. A failing test must never corrupt persistent data.
-3. **Adversarial Mindset:** Tests are written to *break* the code, not to rubber-stamp it. Prefer payloads that would exploit weaknesses (invalid headers, `If-Match` mismatches, injection strings, flood requests). A test suite that never fails is not trusted.
-4. **Repeatable & Deterministic:** Tests should produce identical results regardless of run order or machine. Use `EnsureDeleted/EnsureCreated`, in-memory clocks, and factory resets to keep state separated.
-5. **Fast Feedback:** Unit and integration suites are expected to run via `dotnet test` in under a few seconds. Heavy, long-running scenarios should be flagged and potentially moved to a separate pipeline.
-6. **Executable Documentation:** Every high-level scenario (ticket lifecycle, rate limiting, XSS protection) should be represented by a readable test that doubles as documentation.
+This document acts as the "test constitution" for the repository. A future engineer (or LLM with zero context) should be able to understand the full philosophy, tooling, and coverage strategy by reading this file alone.
 
 ---
 
-## 2. Project Layout
+## 1. Test Constitution (Non-Negotiable Rules)
 
-`Ticket.Tests/`
+1. **Full capability coverage:** Every behaviour must be covered end-to-end, including happy paths, sad paths, concurrency, abuse, and security scenarios. A feature is *never* "done" until its edge cases exist in tests.
+2. **Real database isolation:** Automated tests may not touch a developer's SQL Server. CustomWebApplicationFactory swaps ApplicationDbContext to EF InMemory with a unique database name per test run (TicketTests-{Guid}). ResetStateAsync calls EnsureDeleted/EnsureCreated before each test and also resets the notification spy. If a future test needs SQL Server (e.g., provider-specific behaviour), it must spin up an isolated container.
+3. **Adversarial mindset:** Tests are written to break the code. Payloads deliberately omit headers, reuse stale row versions, flood rate limiters, exercise injection-like search terms, and supply invalid PageTokens. A suite that only asserts happy paths is considered incomplete.
+4. **Deterministic & fast:** Suites must run via dotnet test in a few seconds. Factories tighten rate limits and use the in-memory notifier spy to avoid network I/O.
+5. **Executable documentation:** Each test names the scenario plainly (DomainEvents_ShouldPersistHistory_And_FireNotifications, InvalidPageToken_ShouldReturnBadRequest, etc.), doubling as requirements documentation.
 
-| Folder | Role |
+---
+
+## 2. Test Project Layout
+
+Ticket.Tests/
+
+| Folder | Purpose |
 | --- | --- |
-| `TestUtilities/` | Infrastructure shared by all tests: `CustomWebApplicationFactory` spins up the real ASP.NET Core host using the production `Program`. `IntegrationTestBase` provides helper methods (`AsJson`, `EnsureSuccessAsync`, fixture reset). |
-| `Integration/` | High-level API tests that exercise controllers + middleware + EF Core (`TicketApiTests`). |
-| `Security/` | Hardening scenarios (rate limiting, API key, XSS, SQL-injection resilience). |
-| `Unit/` | Pure logic tests (validators, rules) – no database or HTTP overhead. |
+| Unit/ | Pure logic tests (TicketQueryParametersValidatorTests, TicketStatusTransitionRulesTests, etc.). No HTTP/EF dependencies. |
+| Integration/ | Full-stack API tests using CustomWebApplicationFactory (real middleware, EF context, MediatR handlers). Exercises lifecycle, pagination, domain events, reporting, and auditing. |
+| Security/ | Abuse/regression scenarios: API-key enforcement, sanitization, rate limiting, SQL-like searches, invalid page tokens. |
+| TestUtilities/ | Shared infrastructure: CustomWebApplicationFactory, IntegrationTestBase, TestNotificationService, JSON helpers. |
 
-Dependencies added to the test project:
-- `Microsoft.AspNetCore.Mvc.Testing` for `WebApplicationFactory`.
-- `Microsoft.EntityFrameworkCore.InMemory` for disposable DBs (replaces SQLite from early drafts).
-- `Microsoft.EntityFrameworkCore.Sqlite` still referenced if future scenarios need it.
-- `Bogus` (if data builders are needed later; currently optional).
+Dependencies include Microsoft.AspNetCore.Mvc.Testing, Microsoft.EntityFrameworkCore.InMemory, Microsoft.EntityFrameworkCore.Sqlite (reserved), and xUnit. No mocking framework is needed because most tests run the real pipeline.
 
 ---
 
 ## 3. Test Environment Mechanics
 
-- **Factory Configuration:** `CustomWebApplicationFactory` overrides DI to use the InMemory EF Core provider with a unique database name per factory instance. Rate limiting options are tightened (limit=2, queue=0) so tests can deterministically hit throttling.
-- **Per-Test Isolation:** `IntegrationTestBase.InitializeAsync` calls `EnsureDeleted` + `EnsureCreated`, guaranteeing a clean slate for each test run. No test shares data with another.
-- **Helpers:**
-  - `AsJson(object)` serializes payloads with camelCase (System.Text.Json defaults).
-  - `EnsureSuccessAsync(HttpResponseMessage)` throws an informative exception (status + body) if a call fails, making diagnosis easy.
-  - Common assertions (e.g., Base64 RowVersion handling) live inside the tests themselves so they remain self-explanatory.
+- **CustomWebApplicationFactory**
+  - Overrides the connection string with an EF InMemory provider per test run.
+  - Adjusts rate limiting via RateLimitingOptions overrides so the suite can deterministically trigger 429s.
+  - Swaps the production INotificationService with TestNotificationService, which records create/resolve events and exposes Reset() so each test starts with a clean slate.
+  - Ensures the database is re-created before each test via ResetStateAsync (called by IntegrationTestBase.InitializeAsync).
+- **IntegrationTestBase**
+  - Creates a typed HttpClient with pplication/json accept headers.
+  - Provides AsJson, EnsureSuccessAsync, and NotificationSpy helpers.
+- **Serialization**
+  - Uses System.Text.Json with camelCase conventions, matching the API defaults.
+
+Result: tests never hit real infrastructure, yet they exercise the full ASP.NET Core pipeline, EF Core, AutoMapper, FluentValidation, MediatR, and logging scopes.
 
 ---
 
-## 4. Suite Breakdown
+## 4. Suite Breakdown & Scenarios
 
-### 4.1 Unit Tests (`Ticket.Tests/Unit`)
-- **Validators:** `TicketCreateRequestValidatorTests`, `TicketQueryParametersValidatorTests` verify all boundary conditions (title length, pagination bounds, date-range assertions).
-- **Domain Rules:** `TicketStatusTransitionRulesTests` enforces the status transition matrix.
-- **Additional room:** Add more classes as business logic grows (e.g., service-level pure functions).
+### 4.1 Unit Tests (Ticket.Tests/Unit)
+- **Validators:** TicketQueryParametersValidatorTests now cover page-size bounds plus mutual exclusivity of PageToken and Page. Any future DTO (e.g., notification options) should receive similar coverage.
+- **Domain rules:** TicketStatusTransitionRulesTests verifies the allowed transition matrix.
+- **Future slots:** When pure logic helpers (e.g., normalization utilities) expand, add unit tests here to keep integration suites lean.
 
-### 4.2 Integration Tests (`Ticket.Tests/Integration/TicketApiTests.cs`)
-Scenarios covered:
-1. **Ticket lifecycle:** Create → update → status progress (New → InProgress → Resolved) → search filtering. Ensures history is appended, RowVersion concurrency works, and filtering by status returns the ticket.
-2. **Concurrency:** Simulates a stale `If-Match` header to assert 409 Conflict responses.
-3. **Reporting:** Creates tickets across categories and checks the `/reports/summary` output.
-The entire ASP.NET Core pipeline is used: Middleware, filters, services, repositories, FluentValidation, AutoMapper, and logging.
+### 4.2 Integration Tests (Ticket.Tests/Integration/TicketApiTests)
+Key scenarios:
+1. **Ticket lifecycle:** Create � update � multi-step status transitions � search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
+2. **Concurrency:** PUT with stale If-Match returns 409.
+3. **Reporting:** /reports/summary grouping by category.
+4. **Keyset pagination:** Requests with PageToken return stable slices, no duplicates, and opaque tokens.
+5. **Search scope:** SearchScope=TitleOnly ignores description matches; FullContent finds them.
+6. **Domain events:** After creation/resolution, history rows exist and notification spies capture events�proving MediatR handlers ran instead of services mutating history directly.
 
-### 4.3 Security Tests (`Ticket.Tests/Security/SecurityHardeningTests.cs`)
-- **API Key Enforcement:** POST `/categories` without `X-API-Key` returns 401.
-- **XSS Sanitization:** Creating a ticket with `<script>` in the description ensures the persisted string is not equal to raw HTML and does not contain `<script>`.
-- **Rate Limiting:** Burst of POST `/tickets` requests triggers at least one 429 response when limit is exceeded.
-- **SQL Injection Guards:** Running `/tickets?SearchTerm=' OR 1=1;--` returns 200, proving query builder is safe.
-
-> Feel free to add more security probes (CSRF, oversized payloads, log redaction) as requirements evolve.
+### 4.3 Security/Hardening Tests (Ticket.Tests/Security)
+- API-key enforcement on category endpoints.
+- XSS sanitization (persisted body differs from <script> payloads).
+- Rate limiting deterministic 429s.
+- SQL-injection-like search term returns 200 instead of crashing.
+- Invalid PageToken yields HTTP 400 (ensures gatekeeping of keyset API).
 
 ---
 
 ## 5. Running the Suites
 
-```bash
-dotnet test Ticket.Tests/Ticket.Tests.csproj
-```
+`ash
+# From repo root
+dotnet test Ticket.sln
+`
 
 Selective runs:
-```bash
-dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Integration.TicketApiTests.TicketLifecycle_Should_Create_Update_Status_And_Filter
-dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Security.SecurityHardeningTests.RateLimiter_ShouldThrottleMutations
-```
 
-All commands stay inside the repo root. No additional services need to be launched because the factory uses an in-memory provider.
+`ash
+# Run only integration tests
+dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Integration
 
----
+# Run a specific scenario
+dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Security.SecurityHardeningTests.InvalidPageToken_ShouldReturnBadRequest
+`
 
-## 6. Test Data Guarantees & Isolation Strategy
-
-- **Database Safety:** Tests never hit LocalDB/SQL Server. The factory removes existing `DbContextOptions<ApplicationDbContext>` and replaces it with `UseInMemoryDatabase`. The in-memory store name is randomized per factory so parallel test classes won’t clash.
-- **RowVersion Emulation:** Because InMemory DB does not generate rowversion columns, `ApplicationDbContext` stamps `RowVersion` with GUID bytes on every save. This keeps optimistic concurrency tests realistic even without SQL Server.
-- **Reset Strategy:** `EnsureDeleted` + `EnsureCreated` inside `ResetStateAsync` ensures global test state does not leak, satisfying the “no real data touched” rule (Test Constitution clause #2).
-- **Adversarial Scenarios:** When designing new tests, first imagine how a malicious or careless user would break the feature (invalid `X-API-Key`, simultaneous writes, huge payloads). Encode these attacks as automated tests to keep regression pressure high.
+No external services (SMTP, queues, SQL Server) are required; everything spins up inside the xUnit host.
 
 ---
 
-## 7. How To Extend
+## 6. Isolation Guarantees & Test Doubles
 
-1. **New Feature?** Start by writing at least one integration test describing the intended behavior; let it fail, then implement the feature. Follow up with unit tests for edge-case logic.
-2. **New Security Requirement?** Draft a new method inside `SecurityHardeningTests` (or create a dedicated class) and configure the factory if special knobs are needed (e.g., custom headers).
-3. **Complex Workflow?** Break down into smaller integration tests, each covering a specific branch. Consider using Bogus builders for large payloads while keeping deterministic seeds.
-4. **Performance/Regression Tests?** Create a separate xUnit collection or move into a distinct project/pipeline so the fast feedback property is preserved.
+- **Database safety:** CustomWebApplicationFactory removes the production DbContextOptions<ApplicationDbContext> registration and replaces it with InMemory options. It uses unique names so parallel test classes never collide. ResetStateAsync truncates data between tests and also resets the notification spy.
+- **Notifications:** TestNotificationService records CreatedEvents and ResolvedEvents, letting tests assert domain events fired without making network calls. Production code uses NotificationPlaceholderService, but tests prove the plumbing works.
+- **RowVersion emulation:** ApplicationDbContext stamps RowVersion on InMemory providers, enabling realistic optimistic concurrency tests.
+- **Rate limiting:** Factory overrides RateLimitingOptions to PermitLimit=rateLimit, WindowSeconds=1, QueueLimit=0, ensuring deterministic throttling scenarios.
 
 ---
 
-Armed with this playbook, a zero-context reader can reconstruct the entire testing philosophy of the project and add new tests without guessing the conventions.
+## 7. Extending the Suites
+
+1. **New feature?** Start with an integration test describing the behaviour (even if it fails). Add unit tests for pure logic. Only then implement the feature.
+2. **New security requirement?** Create/extend a class under Security/. Use factory overrides (headers, options) to simulate attack patterns (oversized payloads, tampered tokens, etc.).
+3. **Services requiring external integrations?** Wrap dependencies in interfaces (INotificationService, future IEmailSender) and inject in tests. Provide spies/fakes under TestUtilities/ to avoid real network calls.
+4. **Performance/soak tests?** Keep them out of this test project; create a separate pipeline so the core suite stays fast.
+
+By following this playbook, every capability (especially edge cases) remains testable, isolated from real infrastructure, and adversarial enough to detect regressions early.

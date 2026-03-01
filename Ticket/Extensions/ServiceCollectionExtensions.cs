@@ -1,8 +1,9 @@
 using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
-using Microsoft.AspNetCore.RateLimiting;
+using MediatR;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,11 +11,9 @@ using Ticket.Configuration;
 using Ticket.Data;
 using Ticket.Filters;
 using Ticket.Interfaces.Infrastructure;
-using Ticket.Interfaces.Repositories;
 using Ticket.Interfaces.Services;
 using Ticket.Mapping;
 using Ticket.ModelBinding;
-using Ticket.Repositories;
 using Ticket.Services;
 using Ticket.Services.Infrastructure;
 using Ticket.Validators;
@@ -27,24 +26,23 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<ApiKeyOptions>(configuration.GetSection(ApiKeyOptions.SectionName));
         services.Configure<RateLimitingOptions>(configuration.GetSection(RateLimitingOptions.SectionName));
+        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlServer(configuration.GetConnectionString("TicketDb")));
 
-        services.AddScoped<ITicketRepository, TicketRepository>();
-        services.AddScoped<ICategoryRepository, CategoryRepository>();
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
-
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IReportingService, ReportingService>();
-        services.AddScoped<IAuditLogService, AuditLogService>();
+        services.AddScoped<INotificationService, NotificationPlaceholderService>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IContentSanitizer, HtmlContentSanitizer>();
         services.AddSingleton<IApiKeyValidator, ApiKeyValidator>();
 
         services.AddAutoMapper(typeof(TicketProfile).Assembly);
+
+        services.AddMediatR(typeof(Program).Assembly);
 
         services.AddFluentValidationAutoValidation()
             .AddValidatorsFromAssemblyContaining<TicketCreateRequestValidator>();

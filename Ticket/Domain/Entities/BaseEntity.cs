@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Ticket.Domain.Events;
 
 namespace Ticket.Domain.Entities;
 
@@ -11,4 +13,17 @@ public abstract class BaseEntity
 
     [Timestamp]
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    private readonly List<IDomainEvent> _domainEvents = new();
+
+    [NotMapped]
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+
+    public void AddDomainEvent(IDomainEvent domainEvent)
+    {
+        ArgumentNullException.ThrowIfNull(domainEvent);
+        _domainEvents.Add(domainEvent);
+    }
+
+    public void ClearDomainEvents() => _domainEvents.Clear();
 }

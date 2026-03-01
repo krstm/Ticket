@@ -95,6 +95,15 @@ public class SecurityHardeningTests
         response.EnsureSuccessStatusCode();
     }
 
+    [Fact]
+    public async Task InvalidPageToken_ShouldReturnBadRequest()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var client = factory.CreateClient();
+        var response = await client.GetAsync("/tickets?SortBy=CreatedAt&SortDirection=Desc&PageToken=this-is-not-valid");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private static async Task<CategoryDto> CreateCategoryAsync(HttpClient client, string name)
     {
         var message = new HttpRequestMessage(HttpMethod.Post, "/categories")

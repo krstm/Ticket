@@ -5,7 +5,6 @@ using Ticket.DTOs.Requests;
 using Ticket.DTOs.Responses;
 using Ticket.Domain.Enums;
 using Ticket.Tests.TestUtilities;
-using Xunit.Abstractions;
 
 namespace Ticket.Tests.Integration;
 
@@ -39,6 +38,8 @@ public class TicketApiTests : IntegrationTestBase
         }));
         await EnsureSuccessAsync(createResponse);
         var created = await DeserializeAsync<TicketDetailsDto>(createResponse);
+
+        Assert.Single(NotificationSpy.CreatedEvents);
 
         var updateRequest = new TicketUpdateRequest
         {
@@ -83,12 +84,15 @@ public class TicketApiTests : IntegrationTestBase
         var statusResponse = await Client.SendAsync(statusMessage);
         await EnsureSuccessAsync(statusResponse);
 
+        Assert.Single(NotificationSpy.ResolvedEvents);
+
         var listResponse = await Client.GetAsync("/tickets?Statuses=Resolved&SearchTerm=email");
         await EnsureSuccessAsync(listResponse);
         var list = await DeserializeAsync<PagedResult<TicketSummaryDto>>(listResponse);
 
         Assert.Single(list.Items);
         Assert.Equal(TicketStatus.Resolved, list.Items.First().Status);
+        Assert.True(list.TotalCount >= 1);
     }
 
     [Fact]
@@ -160,6 +164,107 @@ public class TicketApiTests : IntegrationTestBase
 
         Assert.Contains(summaries, s => s.Bucket == categoryA.Name && s.Count == 1);
         Assert.Contains(summaries, s => s.Bucket == categoryB.Name && s.Count == 1);
+    }
+
+    [Fact]
+    public async Task KeysetPagination_Should_ProduceStableSlices()
+    {
+        var category = await CreateCategoryAsync("Infra");
+        for (var i = 0; i < 5; i++)
+        {
+            await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+            {
+                Title = $"Batch {i}",
+                Description = "body",
+                CategoryId = category.Id
+            }));
+        }
+
+        var firstPageResponse = await Client.GetAsync("/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt");
+        await EnsureSuccessAsync(firstPageResponse);
+        var firstPage = await DeserializeAsync<PagedResult<TicketSummaryDto>>(firstPageResponse);
+
+        Assert.Equal(2, firstPage.Items.Count);
+        Assert.False(string.IsNullOrWhiteSpace(firstPage.NextPageToken));
+
+        var secondPageResponse = await Client.GetAsync($"/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt&PageToken={Uri.EscapeDataString(firstPage.NextPageToken!)}");
+        await EnsureSuccessAsync(secondPageResponse);
+        var secondPage = await DeserializeAsync<PagedResult<TicketSummaryDto>>(secondPageResponse);
+
+        Assert.Equal(2, secondPage.Items.Count);
+        Assert.Empty(firstPage.Items.Select(t => t.Id).Intersect(secondPage.Items.Select(t => t.Id)));
+    }
+
+    [Fact]
+    public async Task SearchScope_TitleOnly_ShouldRestrictMatches()
+    {
+        var category = await CreateCategoryAsync("Apps");
+        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        {
+            Title = "Printer",
+            Description = "Email outage",
+            CategoryId = category.Id
+        }));
+
+        var descriptionSearch = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=FullContent");
+        await EnsureSuccessAsync(descriptionSearch);
+        var full = await DeserializeAsync<PagedResult<TicketSummaryDto>>(descriptionSearch);
+        Assert.Single(full.Items);
+
+        var titleOnly = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=TitleOnly");
+        await EnsureSuccessAsync(titleOnly);
+        var scoped = await DeserializeAsync<PagedResult<TicketSummaryDto>>(titleOnly);
+        Assert.Empty(scoped.Items);
+    }
+
+    [Fact]
+    public async Task DomainEvents_ShouldPersistHistory_And_FireNotifications()
+    {
+        var category = await CreateCategoryAsync("Ops");
+        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        {
+            Title = "Server issue",
+            Description = "desc",
+            CategoryId = category.Id
+        }));
+        await EnsureSuccessAsync(createResponse);
+        var created = await DeserializeAsync<TicketDetailsDto>(createResponse);
+
+        var detailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
+        await EnsureSuccessAsync(detailsResponse);
+        var details = await DeserializeAsync<TicketDetailsDto>(detailsResponse);
+        Assert.Contains(details.History, h => h.Action.Contains("Ticket created", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(NotificationSpy.CreatedEvents);
+
+        var prepareMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        {
+            Content = AsJson(new TicketStatusUpdateRequest
+            {
+                Status = TicketStatus.InProgress,
+                ChangedBy = "ops"
+            })
+        };
+        prepareMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(created.RowVersion));
+        var prepareResponse = await Client.SendAsync(prepareMessage);
+        await EnsureSuccessAsync(prepareResponse);
+        var prepared = await DeserializeAsync<TicketDetailsDto>(prepareResponse);
+
+        var statusMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        {
+            Content = AsJson(new TicketStatusUpdateRequest
+            {
+                Status = TicketStatus.Resolved,
+                ChangedBy = "ops"
+            })
+        };
+        statusMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(prepared.RowVersion));
+        await EnsureSuccessAsync(await Client.SendAsync(statusMessage));
+
+        Assert.Single(NotificationSpy.ResolvedEvents);
+        var resolvedDetailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
+        await EnsureSuccessAsync(resolvedDetailsResponse);
+        var resolvedDetails = await DeserializeAsync<TicketDetailsDto>(resolvedDetailsResponse);
+        Assert.Contains(resolvedDetails.History, h => h.Action.Contains("Status changed", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<CategoryDto> CreateCategoryAsync(string name)

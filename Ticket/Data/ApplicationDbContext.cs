@@ -1,3 +1,4 @@
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Ticket.Domain.Entities;
@@ -10,8 +11,12 @@ namespace Ticket.Data;
 
 public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    private readonly IMediator? _mediator;
+
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IMediator? mediator = null)
+        : base(options)
     {
+        _mediator = mediator;
     }
 
     public DbSet<TicketEntity> Tickets => Set<TicketEntity>();
@@ -27,10 +32,12 @@ public class ApplicationDbContext : DbContext
         ConfigureTicketHistory(modelBuilder);
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         ApplyEmulatedRowVersions();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        await DispatchDomainEventsAsync(cancellationToken);
+        return result;
     }
 
     private void ApplyEmulatedRowVersions()
@@ -53,6 +60,32 @@ public class ApplicationDbContext : DbContext
         }
     }
 
+    private async Task DispatchDomainEventsAsync(CancellationToken cancellationToken)
+    {
+        var domainEntities = ChangeTracker.Entries<BaseEntity>()
+            .Select(entry => entry.Entity)
+            .Where(entity => entity.DomainEvents.Count > 0)
+            .ToList();
+
+        if (domainEntities.Count == 0)
+        {
+            return;
+        }
+
+        var events = domainEntities.SelectMany(entity => entity.DomainEvents).ToList();
+        domainEntities.ForEach(entity => entity.ClearDomainEvents());
+
+        if (_mediator is null)
+        {
+            return;
+        }
+
+        foreach (var domainEvent in events)
+        {
+            await _mediator.Publish(domainEvent, cancellationToken);
+        }
+    }
+
     private void ConfigureTicket(ModelBuilder builder)
     {
         EntityTypeBuilder<TicketEntity> ticket = builder.Entity<TicketEntity>();
@@ -60,10 +93,21 @@ public class ApplicationDbContext : DbContext
         ticket.HasKey(x => x.Id);
         ticket.Property(x => x.Title).IsRequired().HasMaxLength(200);
         ticket.Property(x => x.Description).IsRequired().HasMaxLength(5000);
+        ticket.Property(x => x.TitleNormalized).IsRequired().HasMaxLength(200);
+        ticket.Property(x => x.DescriptionNormalized).IsRequired().HasMaxLength(5000);
+        ticket.Property(x => x.RequesterNameNormalized).HasMaxLength(200);
+        ticket.Property(x => x.RequesterEmailNormalized).HasMaxLength(200);
+        ticket.Property(x => x.RecipientNameNormalized).HasMaxLength(200);
+        ticket.Property(x => x.RecipientEmailNormalized).HasMaxLength(200);
+        ticket.Property(x => x.ReferenceCode).HasMaxLength(100);
+        ticket.Property(x => x.ReferenceCodeNormalized).HasMaxLength(100);
         ticket.HasIndex(x => x.CreatedAtUtc);
         ticket.HasIndex(x => x.CategoryId);
         ticket.HasIndex(x => x.Status);
         ticket.HasIndex(x => x.Priority);
+        ticket.HasIndex(x => x.TitleNormalized);
+        ticket.HasIndex(x => x.DescriptionNormalized);
+
         var rowVersionProperty = ticket.Property(x => x.RowVersion)
             .IsConcurrencyToken()
             .IsRequired();
@@ -80,6 +124,7 @@ public class ApplicationDbContext : DbContext
         {
             rowVersionProperty.ValueGeneratedNever();
         }
+
         ticket.HasOne(x => x.Category)
             .WithMany(c => c.Tickets)
             .HasForeignKey(x => x.CategoryId)

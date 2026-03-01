@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Ticket.Configuration;
 using Ticket.Data;
+using Ticket.Interfaces.Services;
 
 namespace Ticket.Tests.TestUtilities;
 
@@ -52,6 +53,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 options.UseInMemoryDatabase(_databaseName);
             });
 
+            var notificationDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(INotificationService));
+            if (notificationDescriptor != null)
+            {
+                services.Remove(notificationDescriptor);
+            }
+
+            services.AddSingleton<TestNotificationService>();
+            services.AddSingleton<INotificationService>(sp => sp.GetRequiredService<TestNotificationService>());
+
             var sp = services.BuildServiceProvider();
             using var scope = sp.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -65,5 +75,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.EnsureDeletedAsync();
         await db.Database.EnsureCreatedAsync();
+        var notifications = scope.ServiceProvider.GetRequiredService<TestNotificationService>();
+        notifications.Reset();
     }
 }
