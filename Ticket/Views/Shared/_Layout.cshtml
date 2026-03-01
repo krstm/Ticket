@@ -13,8 +13,8 @@
     <!-- Modern Assets -->
     <link rel="stylesheet" href="~/dist/main.css" asp-append-version="true" />
 </head>
-<body class="h-full font-sans antialiased text-slate-900" x-data="{ sidebarOpen: false }">
-    
+<body class="h-full font-sans antialiased text-slate-900 overflow-hidden" x-data="{ sidebarOpen: false }">
+    <div class="flex h-full w-full bg-slate-50">
     <!-- Mobile Sidebar Backdrop -->
     <div x-show="sidebarOpen" 
          x-transition:enter="transition-opacity ease-linear duration-300"
@@ -48,7 +48,7 @@
                     <span>Timeline</span>
                 </a>
                 
-                <a asp-controller="Tickets" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Tickets" ? "active" : "")">
+                <a asp-controller="TicketUi" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "TicketUi" ? "active" : "")">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
                     <span>Requests</span>
                 </a>
@@ -57,7 +57,7 @@
                     <span class="px-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Analytics</span>
                 </div>
 
-                <a asp-controller="Reports" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Reports" ? "active" : "")">
+                <a asp-controller="ReportsUi" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "ReportsUi" ? "active" : "")">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                     <span>Insights</span>
                 </a>
@@ -79,7 +79,7 @@
     </div>
 
     <!-- Main Content Wrapper -->
-    <div class="flex flex-col flex-1 min-w-0 overflow-hidden lg:h-screen lg:flex-row lg:static">
+    <div class="flex flex-col flex-1 min-w-0 overflow-hidden h-full">
         
         <main class="flex-1 relative z-0 overflow-y-auto focus:outline-none">
             <!-- Top Header -->
@@ -92,7 +92,7 @@
                 </div>
 
                 <div class="flex items-center space-x-4">
-                    <a asp-controller="Tickets" asp-action="Create" class="btn btn-primary text-sm">
+                    <a asp-controller="TicketUi" asp-action="Create" class="btn btn-primary text-sm">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
                         New Request
                     </a>
@@ -105,6 +105,7 @@
             </div>
         </main>
     </div>
+    </div> <!-- End flex wrapper -->
 
     <!-- Bundle -->
     <script src="~/dist/main.iife.js" asp-append-version="true"></script>
