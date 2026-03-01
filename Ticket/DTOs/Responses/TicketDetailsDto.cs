@@ -10,4 +10,6 @@ public class TicketDetailsDto : TicketSummaryDto
     public TicketMetadataDto Metadata { get; set; } = new();
     public DateTimeOffset? UpdatedAtUtc { get; set; }
     public IReadOnlyCollection<TicketHistoryDto> History { get; set; } = Array.Empty<TicketHistoryDto>();
+    public TicketDepartmentDto Department { get; set; } = new();
+    public IReadOnlyCollection<TicketCommentDto> Comments { get; set; } = Array.Empty<TicketCommentDto>();
 }

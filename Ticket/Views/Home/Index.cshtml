@@ -68,8 +68,9 @@
                         <div class="card p-5 hover:border-primary-200 hover:shadow-md transition-all">
                             <div class="flex items-start justify-between gap-4">
                                 <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-2 mb-1">
+                                    <div class="flex items-center gap-2 mb-1 flex-wrap">
                                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">@item.CategoryName</span>
+                                        <span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary-50 text-primary-700">@item.DepartmentName</span>
                                         <span class="text-slate-300">&middot;</span>
                                         <time class="text-xs text-slate-500">@item.CreatedAtUtc.ToLocalTime().ToString("MMM dd, HH:mm")</time>
                                     </div>

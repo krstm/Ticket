@@ -1,6 +1,7 @@
 @{
     ViewData["Title"] = "New Request";
     var categories = ViewBag.Categories as IEnumerable<Ticket.DTOs.Responses.CategoryDto> ?? Enumerable.Empty<Ticket.DTOs.Responses.CategoryDto>();
+    var departments = ViewBag.Departments as IEnumerable<Ticket.DTOs.Responses.DepartmentDto> ?? Enumerable.Empty<Ticket.DTOs.Responses.DepartmentDto>();
 }
 
 <div class="max-w-2xl mx-auto" x-data="{
@@ -9,13 +10,18 @@
         description: '',
         priority: 'Medium',
         categoryId: '',
+        departmentId: '',
         requester: { name: '', email: '', phone: '' },
         metadata: { channel: 'Web' }
     },
     isSubmitting: false,
     async submitForm() {
-        if(!this.form.title || !this.form.categoryId) {
-            alert('Please fill in the title and category.');
+        if(!this.form.title || !this.form.categoryId || !this.form.departmentId) {
+            alert('Please fill in the title, category and department.');
+            return;
+        }
+        if(!this.form.requester.email) {
+            alert('Requester email is required.');
             return;
         }
         this.isSubmitting = true;
@@ -64,6 +70,16 @@
                         </select>
                     </div>
                     <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-2">Department</label>
+                        <select x-model="form.departmentId" class="input-field" required>
+                            <option value="">Select Department</option>
+                            @foreach(var dept in departments)
+                            {
+                                <option value="@dept.Id">@dept.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-sm font-semibold text-slate-700 mb-2">Priority</label>
                         <select x-model="form.priority" class="input-field">
                             @foreach(Ticket.Domain.Enums.TicketPriority p in Enum.GetValues(typeof(Ticket.Domain.Enums.TicketPriority)))
@@ -95,7 +111,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 mb-2">Email Address</label>
-                    <input type="email" x-model="form.requester.email" placeholder="john@example.com" class="input-field">
+                    <input type="email" x-model="form.requester.email" placeholder="john@example.com" class="input-field" required>
                 </div>
             </div>
         </div>

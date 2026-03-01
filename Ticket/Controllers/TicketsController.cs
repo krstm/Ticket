@@ -57,6 +57,21 @@ public class TicketsController : ControllerBase
         return Ok(ticket);
     }
 
+    [HttpGet("{id:guid}/comments")]
+    public async Task<IActionResult> GetCommentsAsync(Guid id, CancellationToken ct)
+    {
+        var comments = await _ticketService.GetCommentsAsync(id, ct);
+        return Ok(comments);
+    }
+
+    [HttpPost("{id:guid}/comments")]
+    [EnableRateLimiting("mutations")]
+    public async Task<IActionResult> AddCommentAsync(Guid id, [FromBody] TicketCommentCreateRequest request, CancellationToken ct)
+    {
+        var comment = await _ticketService.AddCommentAsync(id, request, ct);
+        return Ok(comment);
+    }
+
     private byte[] ParseRowVersion()
     {
         if (!Request.Headers.TryGetValue(HeaderNames.IfMatch, out var values))

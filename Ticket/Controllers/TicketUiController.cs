@@ -9,11 +9,13 @@ public class TicketUiController : Controller
 {
     private readonly ITicketService _ticketService;
     private readonly ICategoryService _categoryService;
+    private readonly IDepartmentService _departmentService;
 
-    public TicketUiController(ITicketService ticketService, ICategoryService categoryService)
+    public TicketUiController(ITicketService ticketService, ICategoryService categoryService, IDepartmentService departmentService)
     {
         _ticketService = ticketService;
         _categoryService = categoryService;
+        _departmentService = departmentService;
     }
 
     [HttpGet]
@@ -22,6 +24,7 @@ public class TicketUiController : Controller
         query.PageSize = 15; // Standard page size for UI
         var result = await _ticketService.SearchAsync(query, ct);
         ViewBag.Categories = await _categoryService.GetAllAsync(false, ct);
+        ViewBag.Departments = await _departmentService.GetAllAsync(includeInactive: false, ct);
         return View(result);
     }
 
@@ -36,6 +39,7 @@ public class TicketUiController : Controller
     public async Task<IActionResult> Create(CancellationToken ct)
     {
         ViewBag.Categories = await _categoryService.GetAllAsync(false, ct);
+        ViewBag.Departments = await _departmentService.GetAllAsync(false, ct);
         return View();
     }
 }

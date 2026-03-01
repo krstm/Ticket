@@ -1,0 +1,59 @@
+@model IEnumerable<Ticket.DTOs.Responses.DepartmentDto>
+@{
+    ViewData["Title"] = "Departments";
+}
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-slate-900">Departments</h2>
+            <p class="text-slate-500 text-sm">Manage collaboration groups and notification recipients.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a asp-controller="Departments" asp-action="GetAllAsync" class="btn btn-secondary text-sm">API Docs</a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4">
+        @foreach (var department in Model)
+        {
+            <div class="card p-6">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg font-semibold text-slate-900">@department.Name</h3>
+                            @if (!department.IsActive)
+                            {
+                                <span class="badge bg-rose-50 text-rose-700">Inactive</span>
+                            }
+                        </div>
+                        <p class="text-slate-500 text-sm mt-1">@department.Description</p>
+                    </div>
+                    <div class="text-sm text-slate-500">
+                        Updated @department.UpdatedAtUtc.ToLocalTime().ToString("g")
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Members</h4>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var member in department.Members)
+                        {
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                <span class="mr-2">@member.FullName</span>
+                                <span class="text-slate-400">@member.Email</span>
+                                @if (!member.IsActive)
+                                {
+                                    <span class="ml-2 text-rose-500">inactive</span>
+                                }
+                            </span>
+                        }
+                        @if (!department.Members.Any())
+                        {
+                            <span class="text-sm text-slate-400">No members yet.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>

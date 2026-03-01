@@ -37,6 +37,7 @@ namespace Ticket.Controllers
                 Priority = item.Priority,
                 Status = item.Status,
                 CategoryName = item.CategoryName,
+                DepartmentName = item.DepartmentName,
                 CreatedAtUtc = item.CreatedAtUtc,
                 DueAtUtc = item.DueAtUtc
             }).ToList();

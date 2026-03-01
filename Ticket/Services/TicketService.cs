@@ -15,6 +15,7 @@ using Ticket.DTOs.Responses;
 using Ticket.Exceptions;
 using Ticket.Interfaces.Infrastructure;
 using Ticket.Interfaces.Services;
+using Ticket.Services.Infrastructure;
 
 namespace Ticket.Services;
 
@@ -26,25 +27,29 @@ public class TicketService : ITicketService
     private readonly IClock _clock;
     private readonly IContentSanitizer _contentSanitizer;
     private readonly ILogger<TicketService> _logger;
+    private readonly TicketAccessEvaluator _accessEvaluator;
 
     public TicketService(
         ApplicationDbContext context,
         IMapper mapper,
         IClock clock,
         IContentSanitizer contentSanitizer,
-        ILogger<TicketService> logger)
+        ILogger<TicketService> logger,
+        TicketAccessEvaluator accessEvaluator)
     {
         _context = context;
         _mapper = mapper;
         _clock = clock;
         _contentSanitizer = contentSanitizer;
         _logger = logger;
+        _accessEvaluator = accessEvaluator;
     }
 
     public async Task<PagedResult<TicketSummaryDto>> SearchAsync(TicketQueryParameters query, CancellationToken ct)
     {
         var preparedQuery = _context.Tickets.AsNoTracking()
             .Include(t => t.Category)
+            .Include(t => t.Department)
             .ApplyFilters(query)
             .ApplySorting(query);
 
@@ -115,6 +120,7 @@ public class TicketService : ITicketService
     public async Task<TicketDetailsDto> CreateAsync(TicketCreateRequest request, CancellationToken ct)
     {
         var category = await EnsureCategoryExists(request.CategoryId, ct);
+        var department = await EnsureDepartmentExists(request.DepartmentId, ct, includeMembers: true);
         var createdBy = request.Requester?.Name?.Trim() ?? "system";
 
         var ticket = new Ticket.Domain.Entities.Ticket
@@ -122,6 +128,7 @@ public class TicketService : ITicketService
             Title = request.Title.Trim(),
             Description = SanitizeDescription(request.Description),
             CategoryId = category.Id,
+            DepartmentId = department.Id,
             Priority = request.Priority,
             Status = TicketStatus.New,
             DueAtUtc = request.DueAtUtc,
@@ -133,10 +140,16 @@ public class TicketService : ITicketService
             UpdatedAtUtc = _clock.UtcNow
         };
 
-        ApplyNormalization(ticket);
+        ApplyNormalization(ticket, department.Name);
 
         await _context.Tickets.AddAsync(ticket, ct);
-        ticket.AddDomainEvent(new TicketCreatedEvent(ticket, createdBy, ticket.ReferenceCode, _clock.UtcNow));
+        ticket.AddDomainEvent(new TicketCreatedEvent(
+            ticket,
+            createdBy,
+            ticket.ReferenceCode,
+            _clock.UtcNow,
+            department,
+            GetActiveDepartmentMembers(department)));
         await _context.SaveChangesAsync(ct);
 
         var hydrated = await LoadDetailsAsync(ticket.Id, ct) ?? ticket;
@@ -147,7 +160,7 @@ public class TicketService : ITicketService
     public async Task<TicketDetailsDto> UpdateAsync(Guid id, TicketUpdateRequest request, byte[] rowVersion, CancellationToken ct)
     {
         var ticket = await _context.Tickets
-            .Include(t => t.Category)
+            .Include(t => t.Department)!.ThenInclude(d => d.Members)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (ticket is null)
@@ -157,11 +170,24 @@ public class TicketService : ITicketService
 
         EnsureRowVersion(ticket.RowVersion, rowVersion);
         await EnsureCategoryExists(request.CategoryId, ct);
+        var actor = MapActor(request.Actor);
+        _accessEvaluator.EnsureParticipant(ticket, actor);
 
+        var sanitizedDescription = SanitizeDescription(request.Description);
         ticket.Title = request.Title.Trim();
-        ticket.Description = SanitizeDescription(request.Description);
+        if (!string.Equals(ticket.Description, sanitizedDescription, StringComparison.Ordinal))
+        {
+            _accessEvaluator.EnsureCanModifyDescription(actor);
+            ticket.Description = sanitizedDescription;
+        }
         ticket.Priority = request.Priority;
         ticket.CategoryId = request.CategoryId;
+        if (ticket.DepartmentId != request.DepartmentId)
+        {
+            var department = await EnsureDepartmentExists(request.DepartmentId, ct, includeMembers: true, asTracking: true);
+            ticket.DepartmentId = department.Id;
+            ticket.Department = department;
+        }
         ticket.DueAtUtc = request.DueAtUtc;
         ticket.ReferenceCode = string.IsNullOrWhiteSpace(request.ReferenceCode) ? null : request.ReferenceCode.Trim();
         ticket.Requester = MapContact(request.Requester);
@@ -169,7 +195,7 @@ public class TicketService : ITicketService
         ticket.Metadata = MapMetadata(request.Metadata);
         ticket.UpdatedAtUtc = _clock.UtcNow;
 
-        ApplyNormalization(ticket);
+        ApplyNormalization(ticket, ticket.Department?.Name);
 
         await _context.SaveChangesAsync(ct);
         var refreshed = await LoadDetailsAsync(id, ct) ?? ticket;
@@ -178,13 +204,17 @@ public class TicketService : ITicketService
 
     public async Task<TicketDetailsDto> UpdateStatusAsync(Guid id, TicketStatusUpdateRequest request, byte[] rowVersion, CancellationToken ct)
     {
-        var ticket = await _context.Tickets.FirstOrDefaultAsync(t => t.Id == id, ct);
+        var ticket = await _context.Tickets
+            .Include(t => t.Department)!.ThenInclude(d => d.Members)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
         if (ticket is null)
         {
             throw new NotFoundException($"Ticket {id} not found.");
         }
 
         EnsureRowVersion(ticket.RowVersion, rowVersion);
+        var actor = MapActor(request.Actor);
+        _accessEvaluator.EnsureParticipant(ticket, actor);
 
         if (!TicketStatusTransitionRules.CanTransition(ticket.Status, request.Status))
         {
@@ -197,18 +227,93 @@ public class TicketService : ITicketService
         ticket.Status = request.Status;
         ticket.UpdatedAtUtc = _clock.UtcNow;
 
-        var changedBy = string.IsNullOrWhiteSpace(request.ChangedBy) ? "system" : request.ChangedBy.Trim();
+        var changedBy = string.IsNullOrWhiteSpace(request.ChangedBy) ? actor.DisplayName : request.ChangedBy.Trim();
+        var changedByEmail = actor.Email.Trim();
         var occurredAt = _clock.UtcNow;
-        ticket.AddDomainEvent(new TicketStatusChangedEvent(ticket, previousStatus, request.Status, changedBy, note, occurredAt));
+        ticket.AddDomainEvent(new TicketStatusChangedEvent(
+            ticket,
+            previousStatus,
+            request.Status,
+            changedBy,
+            changedByEmail,
+            note,
+            occurredAt,
+            ticket.Department!,
+            GetActiveDepartmentMembers(ticket.Department!)));
         if (request.Status == TicketStatus.Resolved)
         {
-            ticket.AddDomainEvent(new TicketResolvedEvent(ticket, changedBy, note, occurredAt));
+            ticket.AddDomainEvent(new TicketResolvedEvent(
+                ticket,
+                changedBy,
+                note,
+                occurredAt,
+                changedByEmail,
+                ticket.Department!,
+                GetActiveDepartmentMembers(ticket.Department!)));
         }
 
         await _context.SaveChangesAsync(ct);
 
         var refreshed = await LoadDetailsAsync(id, ct) ?? ticket;
         return _mapper.Map<TicketDetailsDto>(refreshed);
+    }
+
+    public async Task<TicketCommentDto> AddCommentAsync(Guid id, TicketCommentCreateRequest request, CancellationToken ct)
+    {
+        var ticket = await _context.Tickets
+            .Include(t => t.Department)!.ThenInclude(d => d.Members)
+            .Include(t => t.Comments)
+            .FirstOrDefaultAsync(t => t.Id == id, ct)
+            ?? throw new NotFoundException($"Ticket {id} not found.");
+
+        var actor = MapActor(request.Actor);
+        _accessEvaluator.EnsureParticipant(ticket, actor);
+
+        var sanitized = SanitizeComment(request.Body);
+
+        var comment = new TicketComment
+        {
+            TicketId = ticket.Id,
+            Body = sanitized,
+            AuthorDisplayName = string.IsNullOrWhiteSpace(actor.DisplayName) ? actor.Email : actor.DisplayName,
+            AuthorEmail = actor.Email.Trim(),
+            AuthorEmailNormalized = actor.NormalizedEmail,
+            Source = actor.ActorType == TicketActorType.Requester ? TicketCommentSource.Requester : TicketCommentSource.DepartmentMember,
+            CreatedAtUtc = _clock.UtcNow
+        };
+
+        ticket.Comments.Add(comment);
+        ticket.LastCommentAtUtc = comment.CreatedAtUtc;
+        ticket.UpdatedAtUtc = _clock.UtcNow;
+
+        ticket.AddDomainEvent(new TicketCommentAddedEvent(
+            ticket,
+            comment,
+            comment.Source,
+            comment.AuthorEmail,
+            comment.CreatedAtUtc,
+            ticket.Department!,
+            GetActiveDepartmentMembers(ticket.Department!)));
+
+        await _context.SaveChangesAsync(ct);
+        return _mapper.Map<TicketCommentDto>(comment);
+    }
+
+    public async Task<IReadOnlyCollection<TicketCommentDto>> GetCommentsAsync(Guid id, CancellationToken ct)
+    {
+        var exists = await _context.Tickets.AsNoTracking().AnyAsync(t => t.Id == id, ct);
+        if (!exists)
+        {
+            throw new NotFoundException($"Ticket {id} not found.");
+        }
+
+        var comments = await _context.TicketComments
+            .AsNoTracking()
+            .Where(c => c.TicketId == id)
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        return _mapper.Map<IReadOnlyCollection<TicketCommentDto>>(comments);
     }
 
     private async Task<Category> EnsureCategoryExists(int categoryId, CancellationToken ct)
@@ -222,11 +327,30 @@ public class TicketService : ITicketService
         return category;
     }
 
+    private async Task<Department> EnsureDepartmentExists(int departmentId, CancellationToken ct, bool includeMembers = false, bool asTracking = false)
+    {
+        IQueryable<Department> query = asTracking ? _context.Departments : _context.Departments.AsNoTracking();
+        if (includeMembers)
+        {
+            query = query.Include(d => d.Members);
+        }
+
+        var department = await query.FirstOrDefaultAsync(d => d.Id == departmentId, ct);
+        if (department is null || !department.IsActive)
+        {
+            throw new NotFoundException($"Department {departmentId} not found or inactive.");
+        }
+
+        return department;
+    }
+
     private Task<Ticket.Domain.Entities.Ticket?> LoadDetailsAsync(Guid id, CancellationToken ct)
     {
         return _context.Tickets.AsNoTracking()
             .Include(t => t.Category)
+            .Include(t => t.Department)!.ThenInclude(d => d.Members)
             .Include(t => t.History)
+            .Include(t => t.Comments)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
     }
 
@@ -265,6 +389,17 @@ public class TicketService : ITicketService
         return string.IsNullOrWhiteSpace(sanitized) ? null : sanitized;
     }
 
+    private string SanitizeComment(string body)
+    {
+        var sanitized = _contentSanitizer.Sanitize(body);
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            throw new BadRequestException("Comment body cannot be empty after sanitization.");
+        }
+
+        return sanitized;
+    }
+
     private static TicketContactInfo MapContact(TicketContactInfoDto? dto)
     {
         if (dto is null)
@@ -288,10 +423,28 @@ public class TicketService : ITicketService
         return new TicketMetadata(dto.IsExternal, dto.RequiresFollowUp);
     }
 
-    private static void ApplyNormalization(Ticket.Domain.Entities.Ticket ticket)
+    private static TicketActorContext MapActor(TicketActorContextDto? dto)
+    {
+        if (dto is null)
+        {
+            throw new BadRequestException("Actor context is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.Email))
+        {
+            throw new BadRequestException("Actor email is required.");
+        }
+
+        var email = dto.Email.Trim();
+        var name = string.IsNullOrWhiteSpace(dto.Name) ? email : dto.Name.Trim();
+        return new TicketActorContext(name, email, dto.ActorType);
+    }
+
+    private static void ApplyNormalization(Ticket.Domain.Entities.Ticket ticket, string? departmentName = null)
     {
         ticket.TitleNormalized = SearchNormalizer.NormalizeRequired(ticket.Title);
         ticket.DescriptionNormalized = SearchNormalizer.NormalizeRequired(ticket.Description);
+        ticket.DepartmentNameNormalized = SearchNormalizer.NormalizeRequired(departmentName ?? ticket.Department?.Name);
         ticket.RequesterNameNormalized = SearchNormalizer.NormalizeOptional(ticket.Requester.Name);
         ticket.RequesterEmailNormalized = SearchNormalizer.NormalizeOptional(ticket.Requester.Email);
         ticket.RecipientNameNormalized = SearchNormalizer.NormalizeOptional(ticket.Recipient.Name);
@@ -366,5 +519,12 @@ public class TicketService : ITicketService
         {
             throw new BadRequestException("Page tokens are only supported when sorting by CreatedAt descending.");
         }
+    }
+
+    private static IReadOnlyCollection<DepartmentMember> GetActiveDepartmentMembers(Department department)
+    {
+        return department.Members
+            .Where(m => m.IsActive)
+            .ToList();
     }
 }

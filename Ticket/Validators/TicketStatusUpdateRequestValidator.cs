@@ -13,5 +13,9 @@ public class TicketStatusUpdateRequestValidator : AbstractValidator<TicketStatus
 
         RuleFor(x => x.Note)
             .MaximumLength(2000);
+
+        RuleFor(x => x.Actor)
+            .NotNull()
+            .SetValidator(new TicketActorContextValidator());
     }
 }

@@ -1,3 +1,4 @@
+using Ticket.Domain.Entities;
 using Ticket.Domain.Enums;
 using TicketEntity = Ticket.Domain.Entities.Ticket;
 
@@ -8,5 +9,8 @@ public sealed record TicketStatusChangedEvent(
     TicketStatus PreviousStatus,
     TicketStatus NewStatus,
     string ChangedBy,
+    string ChangedByEmail,
     string? Note,
-    DateTimeOffset OccurredOnUtc) : DomainEventBase(OccurredOnUtc);
+    DateTimeOffset OccurredOnUtc,
+    Department Department,
+    IReadOnlyCollection<DepartmentMember> DepartmentMembers) : DomainEventBase(OccurredOnUtc);

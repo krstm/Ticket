@@ -199,3 +199,53 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 - **UI polish:** Razor view intentionally plain. When SPA requirements emerge, controllers already emit DTOs ready for a separate front-end.
 
 With this architecture, every behaviour (validation, normalization, paging, domain events, logging, security, testing) is documented and traceable, enabling future contributorsâ€”or LLM copilotsâ€”to extend the platform safely.
+---
+
+## 11. Department Collaboration Model
+
+**Data additions**
+- Departments (Departments + DepartmentMembers tables) capture the target audience for every ticket. Members enforce uniqueness per department and store notification preferences. Ticket.DepartmentId is mandatory and normalized (DepartmentNameNormalized) to accelerate filters.
+- Ticket comments (TicketComments table) are append-only, sanitized, and tied to TicketCommentSource (Requester vs DepartmentMember). The ticket row keeps a LastCommentAtUtc pointer so UI timelines can prioritize threads without extra joins.
+
+**Actor enforcement**
+- Every update/status/comment request carries a TicketActorContext (name, email, actor type). The TicketAccessEvaluator verifies that:
+  - Description changes can only be made by the original requester.
+  - Status updates and comment posts are restricted to the requester or active department members.
+  - Unauthorized attempts throw ForbiddenException, exercised in both integration and security suites.
+- TicketActorContext instances are trimmed/sanitized by model binders; validators ensure non-empty names, RFC-compliant emails, and enum bounds.
+
+**Domain events + notifications**
+- TicketCreatedEvent, TicketStatusChangedEvent, TicketResolvedEvent, and the new TicketCommentAddedEvent now carry department metadata plus the active recipient snapshot. Serilog-based handlers log structured audits and stub notifications that include concrete recipient lists (proving future SMTP/webhook handlers have all context they need).
+- History entries are materialized from events (creation, status changes, comments) so the immutable audit trail is still accurate even after the repository/UoW removal.
+
+**Services & controllers**
+- DepartmentService owns CRUD/member synchronization logic, exposed via /departments JSON APIs and /ui/departments Razor views (guarded by the API-key filter until identity lands).
+- TicketService depends on TicketAccessEvaluator to keep business logic readable; new methods (AddCommentAsync, GetCommentsAsync) back /tickets/{id}/comments endpoints and UI forms.
+- Reporting gained department filters and grouping: /reports/summary?groupBy=department and /reports/summary?DepartmentIds=... reuse the same normalized columns that power ticket search.
+
+**UI faceting**
+- The navigation now surfaces Departments. Ticket list filters gained a Department dropdown and result cards show the owning department badge.
+- Ticket details render department rosters, the comment feed, and a "Your Identity" card wired into Alpine/localStorage. Users declare whether they are the requester or a department member; every action reuses that actor payload so server-side authorization succeeds even before identity integration.
+
+---
+
+## 12. Frontend Stack & Migration Plan
+
+**Current stack snapshot**
+- Razor views orchestrate layout, while a lightweight Vite 5 + Tailwind 3 + Alpine 3 bundle (Frontend/) provides shared CSS tokens and Alpine helpers (e.g., 	icketDetailsPage for actor persistence, status modal orchestration, and comment posting).
+- The build emits wwwroot/dist/main.iife.js + main.css, referenced from _Layout.cshtml with cache busting. 
+pm run dev enables HMR inside the MVC project; 
+pm run build runs during CI.
+
+**Actor-aware UX**
+- 	icketDetailsPage centralizes localStorage-backed actor identity, updateStatus, and submitComment flows so every consumer sends the required TicketActorContext JSON automatically.
+- Comment panels and filters are kept intentionally minimal (plain forms/tables) because the backend is the priority; the docs + Alpine helper explain how to swap in richer UI later.
+
+**Vite 7 / Tailwind 4 migration strategy**
+1. **Prerequisites:** upgrade the Node toolchain to v22.x, install PNPM or stay on npm 10+, and plan to regenerate lockfiles. Tailwind 4 switches to the new "oxide" engine, so PostCSS plugins must be updated to @tailwindcss/postcss.
+2. **Config rewrite:** Vite 7 encourages ite.config.ts. Tailwind 4 collapses content globs and introduces the 	heme.extend reset. This doc enumerates every file needing edits: package.json, ite.config, 	ailwind.config, postcss.config, and the Azure/CI build scripts.
+3. **esbuild advisory mitigation:** the only outstanding npm audit warning today is the esbuild vulnerability bundled with Vite 5. Upgrading to Vite 7 pulls the patched esbuild automatically. Until then, keep the advisory suppressed with context notes in docs/frontend.md.
+4. **Validation plan:** after upgrading, run 
+pm run lint && npm run build, followed by dotnet publish to ensure the IIFE is still copied to wwwroot/dist. Integration tests already render Razor pages, so no extra smoke tests are required once the bundle hashes update.
+
+With the documentation + helpers above, a future engineer (or LLM) can recreate the entire collaboration model end-to-end without additional tribal knowledge.

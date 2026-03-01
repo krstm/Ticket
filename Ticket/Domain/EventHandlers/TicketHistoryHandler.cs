@@ -8,7 +8,8 @@ namespace Ticket.Domain.EventHandlers;
 
 public class TicketHistoryHandler :
     INotificationHandler<TicketCreatedEvent>,
-    INotificationHandler<TicketStatusChangedEvent>
+    INotificationHandler<TicketStatusChangedEvent>,
+    INotificationHandler<TicketCommentAddedEvent>
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<TicketHistoryHandler> _logger;
@@ -51,5 +52,24 @@ public class TicketHistoryHandler :
         _context.TicketHistories.Add(history);
         await _context.SaveChangesAsync(cancellationToken);
         _logger.LogDebug("History entry created for ticket {TicketId} (status change).", notification.Ticket.Id);
+    }
+
+    public async Task Handle(TicketCommentAddedEvent notification, CancellationToken cancellationToken)
+    {
+        var history = new TicketHistory
+        {
+            TicketId = notification.Ticket.Id,
+            Status = notification.Ticket.Status,
+            Action = $"Comment added ({notification.Source})",
+            Note = notification.Comment.Body.Length > 120
+                ? notification.Comment.Body[..120]
+                : notification.Comment.Body,
+            ChangedBy = notification.AuthorEmail,
+            OccurredAtUtc = notification.OccurredOnUtc
+        };
+
+        _context.TicketHistories.Add(history);
+        await _context.SaveChangesAsync(cancellationToken);
+        _logger.LogDebug("History entry created for ticket {TicketId} (comment).", notification.Ticket.Id);
     }
 }

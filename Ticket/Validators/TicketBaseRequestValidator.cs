@@ -20,6 +20,9 @@ public abstract class TicketBaseRequestValidator<TRequest> : AbstractValidator<T
         RuleFor(x => x.CategoryId)
             .GreaterThan(0);
 
+        RuleFor(x => x.DepartmentId)
+            .GreaterThan(0);
+
         RuleFor(x => x.ReferenceCode)
             .MaximumLength(100)
             .When(x => !string.IsNullOrWhiteSpace(x.ReferenceCode));
@@ -29,8 +32,18 @@ public abstract class TicketBaseRequestValidator<TRequest> : AbstractValidator<T
             .When(x => x.DueAtUtc.HasValue);
 
         RuleFor(x => x.Requester)
-            .SetValidator(new TicketContactInfoDtoValidator()!)
-            .When(x => x.Requester != null);
+            .NotNull().WithMessage("Requester information is required.");
+
+        When(x => x.Requester != null, () =>
+        {
+            RuleFor(x => x.Requester!)
+                .SetValidator(new TicketContactInfoDtoValidator()!);
+
+            RuleFor(x => x.Requester!.Email)
+                .NotEmpty()
+                .EmailAddress()
+                .MaximumLength(320);
+        });
 
         RuleFor(x => x.Recipient)
             .SetValidator(new TicketContactInfoDtoValidator()!)

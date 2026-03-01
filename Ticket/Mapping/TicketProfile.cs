@@ -12,7 +12,9 @@ public class TicketProfile : Profile
     public TicketProfile()
     {
         CreateMap<Ticket.Domain.Entities.Ticket, TicketSummaryDto>()
-            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category != null ? src.Category.Name : string.Empty));
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category != null ? src.Category.Name : string.Empty))
+            .ForMember(dest => dest.DepartmentId, opt => opt.MapFrom(src => src.DepartmentId))
+            .ForMember(dest => dest.DepartmentName, opt => opt.MapFrom(src => src.Department != null ? src.Department.Name : string.Empty));
 
         CreateMap<Ticket.Domain.Entities.Ticket, TicketDetailsDto>()
             .IncludeBase<Ticket.Domain.Entities.Ticket, TicketSummaryDto>()
@@ -21,7 +23,10 @@ public class TicketProfile : Profile
             .ForMember(dest => dest.Metadata, opt => opt.MapFrom(src => src.Metadata))
             .ForMember(dest => dest.History, opt => opt.MapFrom(src => src.History
                 .OrderByDescending(h => h.OccurredAtUtc)
-                .Select(h => h)));
+                .Select(h => h)))
+            .ForMember(dest => dest.Department, opt => opt.MapFrom(src => src.Department))
+            .ForMember(dest => dest.Comments, opt => opt.MapFrom(src => src.Comments
+                .OrderByDescending(c => c.CreatedAtUtc)));
 
         CreateMap<TicketHistory, TicketHistoryDto>();
         CreateMap<Category, CategoryDto>();
@@ -33,5 +38,9 @@ public class TicketProfile : Profile
 
         CreateMap<TicketMetadataDto, TicketMetadata>();
         CreateMap<TicketMetadata, TicketMetadataDto>();
+        CreateMap<Department, DepartmentDto>();
+        CreateMap<DepartmentMember, DepartmentMemberDto>();
+        CreateMap<Department, TicketDepartmentDto>();
+        CreateMap<TicketComment, TicketCommentDto>();
     }
 }

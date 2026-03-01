@@ -10,4 +10,6 @@ public interface ITicketService
     Task<TicketDetailsDto> CreateAsync(TicketCreateRequest request, CancellationToken ct);
     Task<TicketDetailsDto> UpdateAsync(Guid id, TicketUpdateRequest request, byte[] rowVersion, CancellationToken ct);
     Task<TicketDetailsDto> UpdateStatusAsync(Guid id, TicketStatusUpdateRequest request, byte[] rowVersion, CancellationToken ct);
+    Task<TicketCommentDto> AddCommentAsync(Guid id, TicketCommentCreateRequest request, CancellationToken ct);
+    Task<IReadOnlyCollection<TicketCommentDto>> GetCommentsAsync(Guid id, CancellationToken ct);
 }

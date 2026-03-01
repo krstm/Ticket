@@ -9,6 +9,7 @@ public class TicketCreateRequest
     public string Description { get; set; } = string.Empty;
     public TicketPriority Priority { get; set; } = TicketPriority.Medium;
     public int CategoryId { get; set; }
+    public int DepartmentId { get; set; }
     public DateTimeOffset? DueAtUtc { get; set; }
     public string? ReferenceCode { get; set; }
     public TicketContactInfoDto? Requester { get; set; }

@@ -9,6 +9,7 @@ public class Ticket : BaseEntity
     public string Description { get; set; } = string.Empty;
     public string TitleNormalized { get; set; } = string.Empty;
     public string DescriptionNormalized { get; set; } = string.Empty;
+    public string DepartmentNameNormalized { get; set; } = string.Empty;
     public string? RequesterNameNormalized { get; set; }
     public string? RequesterEmailNormalized { get; set; }
     public string? RecipientNameNormalized { get; set; }
@@ -19,6 +20,8 @@ public class Ticket : BaseEntity
 
     public int CategoryId { get; set; }
     public Category? Category { get; set; }
+    public int DepartmentId { get; set; }
+    public Department? Department { get; set; }
 
     public TicketContactInfo Requester { get; set; } = TicketContactInfo.Empty;
     public TicketContactInfo Recipient { get; set; } = TicketContactInfo.Empty;
@@ -26,6 +29,8 @@ public class Ticket : BaseEntity
 
     public DateTimeOffset? DueAtUtc { get; set; }
     public string? ReferenceCode { get; set; }
+    public DateTimeOffset? LastCommentAtUtc { get; set; }
 
     public ICollection<TicketHistory> History { get; set; } = new List<TicketHistory>();
+    public ICollection<TicketComment> Comments { get; set; } = new List<TicketComment>();
 }

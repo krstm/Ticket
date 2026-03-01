@@ -9,6 +9,8 @@ public class TicketQueryParameters
     public IReadOnlyCollection<int>? CategoryIds { get; set; }
     public IReadOnlyCollection<TicketStatus>? Statuses { get; set; }
     public IReadOnlyCollection<TicketPriority>? Priorities { get; set; }
+    public IReadOnlyCollection<int>? DepartmentIds { get; set; }
+    public string? DepartmentName { get; set; }
     public DateTimeOffset? CreatedFrom { get; set; }
     public DateTimeOffset? CreatedTo { get; set; }
     public DateTimeOffset? DueFrom { get; set; }

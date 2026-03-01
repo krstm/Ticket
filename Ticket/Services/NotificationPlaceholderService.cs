@@ -17,7 +17,7 @@ public class NotificationPlaceholderService : INotificationService
         _logger = logger;
     }
 
-    public Task NotifyTicketCreatedAsync(TicketEntity ticket, string createdBy, CancellationToken ct)
+    public Task NotifyTicketCreatedAsync(TicketEntity ticket, string createdBy, IReadOnlyCollection<string> recipientEmails, CancellationToken ct)
     {
         if (!_options.NotifyOnTicketCreated)
         {
@@ -25,14 +25,15 @@ public class NotificationPlaceholderService : INotificationService
             return Task.CompletedTask;
         }
 
-        _logger.LogInformation("[Notification Stub] Ticket {TicketId} created by {User} would trigger {Channel} channel.",
+        _logger.LogInformation("[Notification Stub] Ticket {TicketId} created by {User} would trigger {Channel} channel for {Recipients}.",
             ticket.Id,
             createdBy,
-            _options.PreferredChannel);
+            _options.PreferredChannel,
+            string.Join(",", recipientEmails));
         return Task.CompletedTask;
     }
 
-    public Task NotifyTicketResolvedAsync(TicketEntity ticket, string changedBy, string? note, CancellationToken ct)
+    public Task NotifyTicketResolvedAsync(TicketEntity ticket, string changedBy, string? note, IReadOnlyCollection<string> recipientEmails, CancellationToken ct)
     {
         if (!_options.NotifyOnTicketResolved)
         {
@@ -40,11 +41,22 @@ public class NotificationPlaceholderService : INotificationService
             return Task.CompletedTask;
         }
 
-        _logger.LogInformation("[Notification Stub] Ticket {TicketId} resolved by {User}. Note: {Note}. Channel: {Channel}.",
+        _logger.LogInformation("[Notification Stub] Ticket {TicketId} resolved by {User}. Note: {Note}. Channel: {Channel}. Recipients: {Recipients}",
             ticket.Id,
             changedBy,
             note,
-            _options.PreferredChannel);
+            _options.PreferredChannel,
+            string.Join(",", recipientEmails));
+        return Task.CompletedTask;
+    }
+
+    public Task NotifyTicketCommentAddedAsync(TicketEntity ticket, Domain.Entities.TicketComment comment, IReadOnlyCollection<string> recipientEmails, CancellationToken ct)
+    {
+        _logger.LogInformation("[Notification Stub] Comment {CommentId} on ticket {TicketId} by {Author} would notify {Recipients}.",
+            comment.Id,
+            ticket.Id,
+            comment.AuthorEmail,
+            string.Join(",", recipientEmails));
         return Task.CompletedTask;
     }
 }

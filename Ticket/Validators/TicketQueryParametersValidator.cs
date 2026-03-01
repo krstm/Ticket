@@ -31,5 +31,11 @@ public class TicketQueryParametersValidator : AbstractValidator<TicketQueryParam
             .When(x => x.DueFrom.HasValue && x.DueTo.HasValue);
 
         RuleForEach(x => x.CategoryIds).GreaterThan(0);
+
+        RuleForEach(x => x.DepartmentIds).GreaterThan(0);
+
+        RuleFor(x => x.DepartmentName)
+            .MaximumLength(200)
+            .When(x => !string.IsNullOrWhiteSpace(x.DepartmentName));
     }
 }

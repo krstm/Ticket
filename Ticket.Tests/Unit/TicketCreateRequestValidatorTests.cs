@@ -14,7 +14,13 @@ public class TicketCreateRequestValidatorTests
         var model = new TicketCreateRequest
         {
             Description = "desc",
-            CategoryId = 1
+            CategoryId = 1,
+            DepartmentId = 1,
+            Requester = new()
+            {
+                Name = "User",
+                Email = "user@example.com"
+            }
         };
 
         var result = _validator.Validate(model);
@@ -30,7 +36,13 @@ public class TicketCreateRequestValidatorTests
             Title = "Printer",
             Description = "desc",
             CategoryId = 2,
-            Priority = TicketPriority.Low
+            DepartmentId = 3,
+            Priority = TicketPriority.Low,
+            Requester = new()
+            {
+                Name = "Valid User",
+                Email = "valid@example.com"
+            }
         };
 
         var result = _validator.Validate(model);

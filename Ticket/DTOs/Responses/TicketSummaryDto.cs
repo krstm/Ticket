@@ -10,6 +10,8 @@ public class TicketSummaryDto
     public TicketPriority Priority { get; set; }
     public int CategoryId { get; set; }
     public string CategoryName { get; set; } = string.Empty;
+    public int DepartmentId { get; set; }
+    public string DepartmentName { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? DueAtUtc { get; set; }
     public string? ReferenceCode { get; set; }

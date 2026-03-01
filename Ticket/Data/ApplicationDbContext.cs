@@ -4,8 +4,11 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Ticket.Domain.Entities;
 using Ticket.Domain.ValueObjects;
 using CategoryEntity = Ticket.Domain.Entities.Category;
+using DepartmentEntity = Ticket.Domain.Entities.Department;
+using DepartmentMemberEntity = Ticket.Domain.Entities.DepartmentMember;
 using TicketEntity = Ticket.Domain.Entities.Ticket;
 using TicketHistoryEntity = Ticket.Domain.Entities.TicketHistory;
+using TicketCommentEntity = Ticket.Domain.Entities.TicketComment;
 
 namespace Ticket.Data;
 
@@ -21,7 +24,10 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<TicketEntity> Tickets => Set<TicketEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
+    public DbSet<DepartmentEntity> Departments => Set<DepartmentEntity>();
+    public DbSet<DepartmentMemberEntity> DepartmentMembers => Set<DepartmentMemberEntity>();
     public DbSet<TicketHistoryEntity> TicketHistories => Set<TicketHistoryEntity>();
+    public DbSet<TicketCommentEntity> TicketComments => Set<TicketCommentEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,6 +36,9 @@ public class ApplicationDbContext : DbContext
         ConfigureTicket(modelBuilder);
         ConfigureCategory(modelBuilder);
         ConfigureTicketHistory(modelBuilder);
+        ConfigureDepartment(modelBuilder);
+        ConfigureDepartmentMember(modelBuilder);
+        ConfigureTicketComment(modelBuilder);
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
@@ -95,14 +104,17 @@ public class ApplicationDbContext : DbContext
         ticket.Property(x => x.Description).IsRequired().HasMaxLength(5000);
         ticket.Property(x => x.TitleNormalized).IsRequired().HasMaxLength(200);
         ticket.Property(x => x.DescriptionNormalized).IsRequired().HasMaxLength(5000);
+        ticket.Property(x => x.DepartmentNameNormalized).IsRequired().HasMaxLength(200);
         ticket.Property(x => x.RequesterNameNormalized).HasMaxLength(200);
         ticket.Property(x => x.RequesterEmailNormalized).HasMaxLength(200);
         ticket.Property(x => x.RecipientNameNormalized).HasMaxLength(200);
         ticket.Property(x => x.RecipientEmailNormalized).HasMaxLength(200);
         ticket.Property(x => x.ReferenceCode).HasMaxLength(100);
         ticket.Property(x => x.ReferenceCodeNormalized).HasMaxLength(100);
+        ticket.Property(x => x.LastCommentAtUtc);
         ticket.HasIndex(x => x.CreatedAtUtc);
         ticket.HasIndex(x => x.CategoryId);
+        ticket.HasIndex(x => x.DepartmentId);
         ticket.HasIndex(x => x.Status);
         ticket.HasIndex(x => x.Priority);
         ticket.HasIndex(x => x.TitleNormalized);
@@ -128,9 +140,17 @@ public class ApplicationDbContext : DbContext
             .WithMany(c => c.Tickets)
             .HasForeignKey(x => x.CategoryId)
             .OnDelete(DeleteBehavior.Restrict);
+        ticket.HasOne(x => x.Department)
+            .WithMany()
+            .HasForeignKey(x => x.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
         ticket.HasMany(x => x.History)
             .WithOne(h => h.Ticket!)
             .HasForeignKey(h => h.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+        ticket.HasMany(x => x.Comments)
+            .WithOne(c => c.Ticket!)
+            .HasForeignKey(c => c.TicketId)
             .OnDelete(DeleteBehavior.Cascade);
         ticket.HasQueryFilter(x => !x.IsDeleted);
 
@@ -152,6 +172,7 @@ public class ApplicationDbContext : DbContext
         {
             owned.Property(o => o.IsExternal).HasColumnName("IsExternal");
             owned.Property(o => o.RequiresFollowUp).HasColumnName("RequiresFollowUp");
+            owned.Property(o => o.Channel).HasColumnName("MetadataChannel").HasMaxLength(100);
         });
     }
 
@@ -176,5 +197,49 @@ public class ApplicationDbContext : DbContext
         history.Property(x => x.ChangedBy).IsRequired().HasMaxLength(200);
         history.HasIndex(x => x.OccurredAtUtc);
         history.HasQueryFilter(x => !x.Ticket!.IsDeleted);
+    }
+
+    private static void ConfigureDepartment(ModelBuilder builder)
+    {
+        var department = builder.Entity<DepartmentEntity>();
+        department.ToTable("Departments");
+        department.HasKey(x => x.Id);
+        department.Property(x => x.Name).IsRequired().HasMaxLength(200);
+        department.Property(x => x.Description).HasMaxLength(1000);
+        department.HasIndex(x => x.IsActive);
+        department.HasIndex(x => x.Name).IsUnique();
+        department.HasMany(x => x.Members)
+            .WithOne(m => m.Department!)
+            .HasForeignKey(m => m.DepartmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureDepartmentMember(ModelBuilder builder)
+    {
+        var member = builder.Entity<DepartmentMemberEntity>();
+        member.ToTable("DepartmentMembers");
+        member.HasKey(x => x.Id);
+        member.Property(x => x.FullName).IsRequired().HasMaxLength(200);
+        member.Property(x => x.Email).IsRequired().HasMaxLength(320);
+        member.Property(x => x.EmailNormalized).IsRequired().HasMaxLength(320);
+        member.Property(x => x.NotifyOnTicketEmail).HasDefaultValue(true);
+        member.HasIndex(x => x.IsActive);
+        member.HasIndex(x => new { x.DepartmentId, x.EmailNormalized }).IsUnique();
+    }
+
+    private static void ConfigureTicketComment(ModelBuilder builder)
+    {
+        var comment = builder.Entity<TicketCommentEntity>();
+        comment.ToTable("TicketComments");
+        comment.HasKey(x => x.Id);
+        comment.Property(x => x.Body).IsRequired().HasMaxLength(4000);
+        comment.Property(x => x.AuthorDisplayName).IsRequired().HasMaxLength(200);
+        comment.Property(x => x.AuthorEmail).IsRequired().HasMaxLength(320);
+        comment.Property(x => x.AuthorEmailNormalized).IsRequired().HasMaxLength(320);
+        comment.Property(x => x.Source).IsRequired();
+        comment.Property(x => x.CreatedAtUtc).IsRequired();
+        comment.HasIndex(x => x.TicketId);
+        comment.HasIndex(x => x.CreatedAtUtc);
+        comment.HasQueryFilter(x => !x.Ticket!.IsDeleted);
     }
 }

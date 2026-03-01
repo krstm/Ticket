@@ -10,5 +10,8 @@ public class ReportQueryValidator : AbstractValidator<ReportQuery>
         RuleFor(x => x.To)
             .GreaterThanOrEqualTo(x => x.From)
             .When(x => x.From.HasValue && x.To.HasValue);
+
+        RuleForEach(x => x.DepartmentIds)
+            .GreaterThan(0);
     }
 }

@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "All Requests";
     var categories = ViewBag.Categories as IEnumerable<Ticket.DTOs.Responses.CategoryDto> ?? Enumerable.Empty<Ticket.DTOs.Responses.CategoryDto>();
+    var departments = ViewBag.Departments as IEnumerable<Ticket.DTOs.Responses.DepartmentDto> ?? Enumerable.Empty<Ticket.DTOs.Responses.DepartmentDto>();
 
     string GetPriorityClass(TicketPriority priority) => priority switch
     {
@@ -29,12 +30,14 @@
     priority: '@(Context.Request.Query["Priorities"])',
     status: '@(Context.Request.Query["Statuses"])',
     category: '@(Context.Request.Query["CategoryIds"])',
+    department: '@(Context.Request.Query["DepartmentIds"])',
     submitFilters() {
         let url = new URL(window.location);
         if(this.search) url.searchParams.set('SearchTerm', this.search); else url.searchParams.delete('SearchTerm');
         if(this.priority) url.searchParams.set('Priorities', this.priority); else url.searchParams.delete('Priorities');
         if(this.status) url.searchParams.set('Statuses', this.status); else url.searchParams.delete('Statuses');
         if(this.category) url.searchParams.set('CategoryIds', this.category); else url.searchParams.delete('CategoryIds');
+        if(this.department) url.searchParams.set('DepartmentIds', this.department); else url.searchParams.delete('DepartmentIds');
         url.searchParams.delete('PageToken'); // Reset pagination on filter change
         window.location = url;
     }
@@ -62,6 +65,18 @@
                         @foreach(var cat in categories)
                         {
                             <option value="@cat.Id">@cat.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <!-- Department -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-2">Department</label>
+                    <select x-model="department" class="input-field py-2">
+                        <option value="">All Departments</option>
+                        @foreach(var dept in departments)
+                        {
+                            <option value="@dept.Id">@dept.Name</option>
                         }
                     </select>
                 </div>
@@ -150,6 +165,8 @@
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 11h.01M7 15h.01M11 7h.01M11 11h.01M11 15h.01M15 7h.01M15 11h.01M15 15h.01M19 7h.01M19 11h.01M19 15h.01M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                                     @ticket.CategoryName
                                 </span>
+                                <span class="text-slate-300">&middot;</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-semibold">@ticket.DepartmentName</span>
                                 <span class="text-slate-300">&middot;</span>
                                 <span>Created @ticket.CreatedAtUtc.ToLocalTime().ToString("g")</span>
                             </div>

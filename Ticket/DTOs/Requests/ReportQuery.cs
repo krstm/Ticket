@@ -8,4 +8,5 @@ public class ReportQuery
     public DateTimeOffset? To { get; set; }
     public ReportGroupBy GroupBy { get; set; } = ReportGroupBy.Category;
     public ReportInterval Interval { get; set; } = ReportInterval.Day;
+    public IReadOnlyCollection<int>? DepartmentIds { get; set; }
 }

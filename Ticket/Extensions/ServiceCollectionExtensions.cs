@@ -35,10 +35,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IReportingService, ReportingService>();
         services.AddScoped<INotificationService, NotificationPlaceholderService>();
+        services.AddScoped<IDepartmentService, DepartmentService>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IContentSanitizer, HtmlContentSanitizer>();
         services.AddSingleton<IApiKeyValidator, ApiKeyValidator>();
+        services.AddSingleton<TicketAccessEvaluator>();
 
         services.AddAutoMapper(typeof(TicketProfile).Assembly);
 

@@ -33,6 +33,11 @@ public static class TicketQueryExtensions
             query = query.Where(t => parameters.CategoryIds.Contains(t.CategoryId));
         }
 
+        if (parameters.DepartmentIds?.Count > 0)
+        {
+            query = query.Where(t => parameters.DepartmentIds.Contains(t.DepartmentId));
+        }
+
         if (parameters.Statuses?.Count > 0)
         {
             query = query.Where(t => parameters.Statuses.Contains(t.Status));
@@ -81,6 +86,13 @@ public static class TicketQueryExtensions
                 (t.RecipientEmailNormalized != null && EF.Functions.Like(t.RecipientEmailNormalized, like)));
         }
 
+        if (!string.IsNullOrWhiteSpace(parameters.DepartmentName))
+        {
+            var normalized = SearchNormalizer.NormalizeRequired(parameters.DepartmentName);
+            var like = $"%{normalized}%";
+            query = query.Where(t => EF.Functions.Like(t.DepartmentNameNormalized, like));
+        }
+
         return query;
     }
 
@@ -122,6 +134,8 @@ public static class TicketQueryExtensions
             Priority = t.Priority,
             CategoryId = t.CategoryId,
             CategoryName = t.Category != null ? t.Category.Name : string.Empty,
+            DepartmentId = t.DepartmentId,
+            DepartmentName = t.Department != null ? t.Department.Name : string.Empty,
             CreatedAtUtc = t.CreatedAtUtc,
             DueAtUtc = t.DueAtUtc,
             ReferenceCode = t.ReferenceCode,

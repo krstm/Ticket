@@ -17,7 +17,7 @@ namespace Ticket.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.3")
+                .HasAnnotation("ProductVersion", "8.0.6")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -58,6 +58,86 @@ namespace Ticket.Data.Migrations
                     b.ToTable("Categories", (string)null);
                 });
 
+            modelBuilder.Entity("Ticket.Domain.Entities.Department", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Departments", (string)null);
+                });
+
+            modelBuilder.Entity("Ticket.Domain.Entities.DepartmentMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("EmailNormalized")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyOnTicketEmail")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("DepartmentId", "EmailNormalized")
+                        .IsUnique();
+
+                    b.ToTable("DepartmentMembers", (string)null);
+                });
+
             modelBuilder.Entity("Ticket.Domain.Entities.Ticket", b =>
                 {
                     b.Property<Guid>("Id")
@@ -69,6 +149,14 @@ namespace Ticket.Data.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DepartmentNameNormalized")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -85,6 +173,9 @@ namespace Ticket.Data.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastCommentAtUtc")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Priority")
                         .HasColumnType("int");
@@ -141,6 +232,8 @@ namespace Ticket.Data.Migrations
 
                     b.HasIndex("CreatedAtUtc");
 
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("Priority");
 
                     b.HasIndex("Status");
@@ -148,6 +241,52 @@ namespace Ticket.Data.Migrations
                     b.HasIndex("TitleNormalized");
 
                     b.ToTable("Tickets", (string)null);
+                });
+
+            modelBuilder.Entity("Ticket.Domain.Entities.TicketComment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthorDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("AuthorEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("AuthorEmailNormalized")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("TicketId");
+
+                    b.ToTable("TicketComments", (string)null);
                 });
 
             modelBuilder.Entity("Ticket.Domain.Entities.TicketHistory", b =>
@@ -190,11 +329,28 @@ namespace Ticket.Data.Migrations
                     b.ToTable("TicketHistories", (string)null);
                 });
 
+            modelBuilder.Entity("Ticket.Domain.Entities.DepartmentMember", b =>
+                {
+                    b.HasOne("Ticket.Domain.Entities.Department", "Department")
+                        .WithMany("Members")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+                });
+
             modelBuilder.Entity("Ticket.Domain.Entities.Ticket", b =>
                 {
                     b.HasOne("Ticket.Domain.Entities.Category", "Category")
                         .WithMany("Tickets")
                         .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Ticket.Domain.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -261,7 +417,9 @@ namespace Ticket.Data.Migrations
 
                             b1.Property<string>("Channel")
                                 .IsRequired()
-                                .HasColumnType("nvarchar(max)");
+                                .HasMaxLength(100)
+                                .HasColumnType("nvarchar(100)")
+                                .HasColumnName("MetadataChannel");
 
                             b1.Property<bool>("IsExternal")
                                 .HasColumnType("bit")
@@ -281,6 +439,8 @@ namespace Ticket.Data.Migrations
 
                     b.Navigation("Category");
 
+                    b.Navigation("Department");
+
                     b.Navigation("Metadata")
                         .IsRequired();
 
@@ -289,6 +449,17 @@ namespace Ticket.Data.Migrations
 
                     b.Navigation("Requester")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Ticket.Domain.Entities.TicketComment", b =>
+                {
+                    b.HasOne("Ticket.Domain.Entities.Ticket", "Ticket")
+                        .WithMany("Comments")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Ticket");
                 });
 
             modelBuilder.Entity("Ticket.Domain.Entities.TicketHistory", b =>
@@ -307,8 +478,15 @@ namespace Ticket.Data.Migrations
                     b.Navigation("Tickets");
                 });
 
+            modelBuilder.Entity("Ticket.Domain.Entities.Department", b =>
+                {
+                    b.Navigation("Members");
+                });
+
             modelBuilder.Entity("Ticket.Domain.Entities.Ticket", b =>
                 {
+                    b.Navigation("Comments");
+
                     b.Navigation("History");
                 });
 #pragma warning restore 612, 618

@@ -28,12 +28,19 @@ public class ReportingService : IReportingService
         var (from, to) = NormalizeRange(query);
         var baseQuery = _context.Tickets.AsNoTracking()
             .Include(t => t.Category)
+            .Include(t => t.Department)
             .Where(t => t.CreatedAtUtc >= from && t.CreatedAtUtc <= to);
+
+        if (query.DepartmentIds?.Count > 0)
+        {
+            baseQuery = baseQuery.Where(t => query.DepartmentIds.Contains(t.DepartmentId));
+        }
 
         IQueryable<IGrouping<string, Domain.Entities.Ticket>> grouping = query.GroupBy switch
         {
             ReportGroupBy.Status => baseQuery.GroupBy(t => t.Status.ToString()),
             ReportGroupBy.Priority => baseQuery.GroupBy(t => t.Priority.ToString()),
+            ReportGroupBy.Department => baseQuery.GroupBy(t => t.Department != null ? t.Department.Name : "Unknown Department"),
             _ => baseQuery.GroupBy(t => t.Category != null ? t.Category.Name : "Unknown")
         };
 
@@ -58,6 +65,7 @@ public class ReportingService : IReportingService
 
         var buckets = await _context.Tickets.AsNoTracking()
             .Where(t => t.CreatedAtUtc >= from && t.CreatedAtUtc <= to)
+            .Where(t => query.DepartmentIds == null || query.DepartmentIds.Count == 0 || query.DepartmentIds.Contains(t.DepartmentId))
             .Select(t => new
             {
                 PeriodStart = AlignToInterval(t.CreatedAtUtc, query.Interval),

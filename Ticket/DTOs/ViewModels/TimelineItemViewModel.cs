@@ -9,6 +9,7 @@ public class TimelineItemViewModel
     public TicketPriority Priority { get; set; }
     public TicketStatus Status { get; set; }
     public string CategoryName { get; set; } = string.Empty;
+    public string DepartmentName { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? DueAtUtc { get; set; }
 }
