@@ -1,17 +1,21 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using MediatR;
 using Ticket.Domain.Events;
 using Ticket.Interfaces.Services;
 
 namespace Ticket.Domain.EventHandlers;
 
-public class NotificationPlaceholderHandler :
+public class NotificationDispatcherHandler :
     INotificationHandler<TicketCreatedEvent>,
     INotificationHandler<TicketResolvedEvent>,
     INotificationHandler<TicketCommentAddedEvent>
 {
     private readonly INotificationService _notificationService;
 
-    public NotificationPlaceholderHandler(INotificationService notificationService)
+    public NotificationDispatcherHandler(INotificationService notificationService)
     {
         _notificationService = notificationService;
     }

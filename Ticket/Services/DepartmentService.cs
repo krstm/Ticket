@@ -1,4 +1,5 @@
-using AutoMapper;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ticket.Data;
@@ -8,20 +9,19 @@ using Ticket.DTOs.Responses;
 using Ticket.Exceptions;
 using Ticket.Interfaces.Infrastructure;
 using Ticket.Interfaces.Services;
+using Ticket.Services.Mapping;
 
 namespace Ticket.Services;
 
 public class DepartmentService : IDepartmentService
 {
     private readonly ApplicationDbContext _context;
-    private readonly IMapper _mapper;
     private readonly IClock _clock;
     private readonly ILogger<DepartmentService> _logger;
 
-    public DepartmentService(ApplicationDbContext context, IMapper mapper, IClock clock, ILogger<DepartmentService> logger)
+    public DepartmentService(ApplicationDbContext context, IClock clock, ILogger<DepartmentService> logger)
     {
         _context = context;
-        _mapper = mapper;
         _clock = clock;
         _logger = logger;
     }
@@ -41,7 +41,7 @@ public class DepartmentService : IDepartmentService
             .OrderBy(d => d.Name)
             .ToListAsync(ct);
 
-        return _mapper.Map<IReadOnlyCollection<DepartmentDto>>(departments);
+        return departments.Select(d => d.ToDto()).ToArray();
     }
 
     public async Task<DepartmentDto> GetAsync(int id, CancellationToken ct)
@@ -52,7 +52,7 @@ public class DepartmentService : IDepartmentService
             .FirstOrDefaultAsync(d => d.Id == id, ct)
             ?? throw new NotFoundException($"Department {id} not found.");
 
-        return _mapper.Map<DepartmentDto>(department);
+        return department.ToDto();
     }
 
     public async Task<DepartmentDto> CreateAsync(DepartmentCreateRequest request, CancellationToken ct)
@@ -76,7 +76,7 @@ public class DepartmentService : IDepartmentService
         await _context.Departments.AddAsync(department, ct);
         await _context.SaveChangesAsync(ct);
         _logger.LogInformation("Department {DepartmentId} created with {MemberCount} members.", department.Id, department.Members.Count);
-        return _mapper.Map<DepartmentDto>(department);
+        return department.ToDto();
     }
 
     public async Task<DepartmentDto> UpdateAsync(int id, DepartmentUpdateRequest request, CancellationToken ct)
@@ -96,7 +96,7 @@ public class DepartmentService : IDepartmentService
         SyncMembers(department, request.Members);
 
         await _context.SaveChangesAsync(ct);
-        return _mapper.Map<DepartmentDto>(department);
+        return department.ToDto();
     }
 
     private async Task EnsureUniqueNameAsync(string name, int? excludeId, CancellationToken ct)

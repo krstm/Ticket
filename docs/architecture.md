@@ -8,7 +8,7 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 
 1. Public-facing ticket intake for requesters that do **not** authenticate yet (requester/recipient metadata is supplied manually for now).
 2. Workspace for counterpart teams to triage, filter, and report on tickets, including category management and reporting dashboards.
-3. Enterprise guardrails from day one: centralized logging, FluentValidation on every DTO, HTML sanitization, rate limiting, API-key protection for admin routes, and RFC-7807 error envelopes.
+3. Enterprise guardrails from day one: centralized logging, FluentValidation on every DTO, HTML sanitization, rate limiting, and RFC-7807 error envelopes (even though no temporary API-key/“shared secret” hacks exist).
 4. A modern Razor shell (Tailwind + Alpine) now ships alongside the JSON APIs: timeline, ticket grid/detail, category admin, and insights dashboards all live inside the same MVC project. Future mail/identity features must still be pluggable without rewriting core services.
 
 ---
@@ -22,18 +22,18 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 | Domain/ValueObjects | Owned types (TicketContactInfo, TicketMetadata) stored inline with the Ticket row. |
 | Domain/Enums & Rules | Enum definitions plus TicketStatusTransitionRules and TicketSearchScope. |
 | Domain/Support | Helpers such as SearchNormalizer. |
-| Domain/EventHandlers | MediatR handlers (TicketHistoryHandler, AuditLogHandler, NotificationPlaceholderHandler). |
+| Domain/EventHandlers | MediatR handlers (TicketHistoryHandler, AuditLogHandler, NotificationDispatcherHandler). |
 | Domain/Events | Domain event records (TicketCreatedEvent, TicketStatusChangedEvent, TicketResolvedEvent). |
 | DTOs/Requests|Responses|ViewModels | Wire formats for controllers, API responses, Razor view models, and pagination wrappers (PagedResult<T> with NextPageToken). |
 | Interfaces/Services | Service contracts (ITicketService, ICategoryService, IReportingService, INotificationService). |
-| Interfaces/Infrastructure | Cross-cutting abstractions (IClock, IContentSanitizer, IApiKeyValidator). |
-| Services/ | Business services (TicketService, CategoryService, ReportingService, NotificationPlaceholderService, SystemClock, HtmlContentSanitizer). |
+| Interfaces/Infrastructure | Cross-cutting abstractions (IClock, IContentSanitizer). |
+| Services/ | Business services (TicketService, CategoryService, ReportingService, NullNotificationService, SystemClock, HtmlContentSanitizer). |
 | Data/ApplicationDbContext | EF Core context with row-version emulation, soft-delete filters, normalized column configuration, and domain-event dispatch in SaveChangesAsync. |
 | Data/Querying | TicketQueryExtensions + TicketPageToken helpers for filtering/sorting/paging/projections. |
-| Configuration/ | Options (ApiKeyOptions, RateLimitingOptions, NotificationOptions). |
+| Configuration/ | Options (RateLimitingOptions, NotificationOptions). |
 | Extensions/ | DI + pipeline wiring (ServiceCollectionExtensions, ApplicationBuilderExtensions). |
-| Middleware/, Filters/, ModelBinding/ | Correlation IDs, RFC-7807 exception handling, API-key filter, model trimming, validation filter. |
-| Mapping/ | AutoMapper profiles that project entities to DTOs/view models. |
+| Middleware/, Filters/, ModelBinding/ | Correlation IDs, RFC-7807 exception handling, model trimming, validation filter. |
+| Services/Mapping/ | Explicit mapper extensions that convert entities/value objects to DTOs without AutoMapper. |
 | Views/ | Razor pages powering the timeline, modern ticket list/detail forms, categories UI, and the analytics dashboard. |
 | Frontend/ | Tailwind/Alpine/Vite source (JS entry under `Frontend/src/main.js`, shared styles, and component helpers). Treat this as the design-system workspace. |
 | package.json / vite.config.js / tailwind.config.js | NPM manifest + build tooling. `npm run build` emits `wwwroot/dist/main.iife.js` + `main.css`, which `_Layout.cshtml` references. |
@@ -88,7 +88,7 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 5. **Domain Event Handlers:**
    - TicketHistoryHandler inserts TicketHistory rows (creation + status changes) using the same ApplicationDbContext scope.
    - AuditLogHandler logs structured audit entries (action, ticket id, statuses, actors).
-   - NotificationPlaceholderHandler forwards events to INotificationService (currently a logging stub configured via NotificationOptions). Tests override this with TestNotificationService to assert events fired without hitting external systems.
+   - NotificationDispatcherHandler simply forwards events to `INotificationService`. Production wiring uses the null implementation; tests override it with `TestNotificationService` to assert emails/webhooks would occur without hitting external systems.
 
 ---
 
@@ -97,12 +97,12 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 ### TicketService
 | Method | Responsibilities |
 | --- | --- |
-| SearchAsync | Builds a composable query via TicketQueryExtensions, projects directly to TicketSummaryDto, and either runs offset paging (with TotalCount) or keyset paging (using PageToken + TicketPageToken). Invalid tokens or unsupported sort orders return 400. |
-| GetAsync | No-tracking load of a ticket, category, and history. History ordering happens inside AutoMapper (descending by OccurredAtUtc). |
+| SearchAsync | Runs `TicketSearchPipeline`, which applies filters/sorts, projects summaries server-side, and executes either offset paging (with TotalCount) or keyset paging (PageToken + TicketPageToken). Invalid tokens or unsupported sort orders return 400. |
+| GetAsync | No-tracking load of a ticket, category, history, comments, and department roster; mapping extensions ensure history/comments are sorted descending before returning. |
 | CreateAsync | Sanitizes description, normalizes fields, ensures category is active, sets timestamps from IClock, raises TicketCreatedEvent, and lets event handlers write history/log/notifications. |
 | UpdateAsync | Row-version guard, sanitization, normalization, timestamp updates. Does **not** touch historiesâ€”only domain events do. |
 | UpdateStatusAsync | Checks transition matrix, emits TicketStatusChangedEvent and (if resolving) TicketResolvedEvent, letting handlers append history and send notifications. |
-| Helpers | ApplyNormalization, MapContact, SanitizeDescription, SanitizeOptional, EnsureCategoryExists, ParsePageToken, SkipPreviouslyServed. |
+| Helpers | `TicketMutationHelper` (sanitization + normalization), `TicketCommentHelper` (participant-only comment creation), `TicketSearchPipeline` (paging/filter orchestration), `TicketDomainEventFactory` (centralized creation of domain events). |
 
 ### CategoryService
 - Query _context.Categories directly and uses _clock for timestamps.
@@ -114,13 +114,13 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 ### TicketQueryExtensions
 - ApplyFilters â€” centralizes search terms, category/status/priority filters, requester/recipient matches, created/due date ranges, and TicketSearchScope semantics (Title-only vs full content).
 - ApplySorting â€” whitelisted sort expressions (CreatedAt, Priority, Status, CategoryName, DueAt) with deterministic tie-breakers (Id).
-- ProjectToSummary â€” projection expression so EF performs server-side DTO shaping (no extra AutoMapper call on search).
+- ProjectToSummary â€” projection expression so EF performs server-side DTO shaping; detail views rely on the manual mapping extensions in `Services/Mapping`.
 
 ### TicketPageToken
 - Encodes {timestamp}|{servedWithinTimestamp}|{ticketId} to Base64. servedWithinTimestamp counts how many rows with that timestamp already appeared so the next page can skip them even when multiple tickets share the same CreatedAtUtc value.
 
-### NotificationPlaceholderService
-- Reads NotificationOptions to decide whether to log stub notifications for create/resolve events. Production deployments will replace it with real mail/webhook services, while tests override it with TestNotificationService.
+### NullNotificationService
+- Provides a no-op implementation today so the rest of the pipeline stays side-effect free. Production deployments will swap in real SMTP/webhook transports, while tests override it with TestNotificationService.
 
 ---
 
@@ -133,6 +133,7 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 5. **Identity readiness:** No temporary API keys or client-side hacks are in use. Instead, controllers accept unauthenticated traffic today while services, validators, and domain events already expose the seams (`TicketActorContext`, notification hooks) where a proper identity provider will plug in later.
 6. **Transport + headers:** HTTPS redirection, HSTS (non-development), and space for future CSP/XFO headers.
 7. **Guardrails proven by tests:** Security suite covers XSS sanitization, rate limiting, SQL-injection-style filters, invalid page tokens, and department-only mutations via actor contexts.
+8. **Release checklist:** Before every deployment run `dotnet list Ticket/Ticket.csproj package --vulnerable`, `npm audit --json`, and the `rg` sweeps listed in docs/testing.md §9. Capture the outputs in release notes; deployments block on any non-empty vulnerability report.
 
 ---
 
@@ -145,7 +146,6 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
     "TicketDb": "Server=(localdb)\\MSSQLLocalDB;Database=TicketDb;..."
   },
   "RateLimiting": { "PermitLimit": 100, "WindowSeconds": 60, "QueueLimit": 0 },
-  "ApiKeys": { "CategoryManagement": "SET-THIS-IN-SECRETS" },
   "Notifications": {
     "NotifyOnTicketCreated": false,
     "NotifyOnTicketResolved": false,
@@ -182,9 +182,9 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 | PUT /tickets/{id} | Updates mutable fields; requires If-Match header (base64 rowversion). |
 | PATCH /tickets/{id}/status | Status-only update. Validates transition matrix, requires If-Match. Emits TicketStatusChangedEvent (+TicketResolvedEvent when applicable). |
 | GET /categories?includeInactive= | Lists categories, optionally including inactive ones. |
-| POST /categories | API-key protected; creates new category. |
-| PUT /categories/{id} | API-key protected; updates name/description/isActive. |
-| DELETE /categories/{id} | API-key protected soft-deactivate (blocked if tickets exist). |
+| POST /categories | Creates new category (currently open until Identity policies arrive; every mutation is logged). |
+| PUT /categories/{id} | Updates name/description/isActive (identity enforcement arrives with the auth work). |
+| DELETE /categories/{id} | Soft-deactivate (blocked if tickets exist). |
 | POST /categories/{id}/reactivate | Reactivate a category. |
 | GET /reports/summary | Groups tickets by category/status/priority within a date range. |
 | GET /reports/trend | Status trends grouped by day or ISO week. |
@@ -194,7 +194,7 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 
 ## 10. Future Enhancements & Guardrails
 
-- **Identity & authorization:** API-key filter is a placeholder. Domain events already carry ChangedBy strings so plugging Identity later only changes the caller, not the workflow.
+- **Identity & authorization:** No temporary API-key or shared-secret filter exists. Domain events already carry ChangedBy strings so plugging Identity later only changes the caller, not the workflow.
 - **Mail/Webhooks:** Hook new MediatR handlers onto TicketCreatedEvent and TicketResolvedEvent. INotificationService already abstracts notification delivery.
 - **Full-text search / analytics:** Swap the normalized-column strategy for SQL Server Full-Text Search or an external engine when volume justifies it. Documented token format ensures keyset paging survives the migration.
 - **UI polish:** Razor view intentionally plain. When SPA requirements emerge, controllers already emit DTOs ready for a separate front-end.
@@ -220,7 +220,7 @@ With this architecture, every behaviour (validation, normalization, paging, doma
 - History entries are materialized from events (creation, status changes, comments) so the immutable audit trail is still accurate even after the repository/UoW removal.
 
 **Services & controllers**
-- DepartmentService owns CRUD/member synchronization logic, exposed via /departments JSON APIs and /ui/departments Razor views (guarded by the API-key filter until identity lands).
+- DepartmentService owns CRUD/member synchronization logic, exposed via /departments JSON APIs and /ui/departments Razor views. These remain open for now; once Identity lands we will bolt policies onto the existing controllers.
 - TicketService depends on TicketAccessEvaluator to keep business logic readable; new methods (AddCommentAsync, GetCommentsAsync) back /tickets/{id}/comments endpoints and UI forms.
 - Reporting gained department filters and grouping: /reports/summary?groupBy=department and /reports/summary?DepartmentIds=... reuse the same normalized columns that power ticket search.
 
@@ -233,14 +233,12 @@ With this architecture, every behaviour (validation, normalization, paging, doma
 ## 12. Frontend Stack & Migration Plan
 
 **Current stack snapshot**
-- Razor views orchestrate layout, while a lightweight Vite 5 + Tailwind 3 + Alpine 3 bundle (Frontend/) provides shared CSS tokens and Alpine helpers (e.g., 	icketDetailsPage for actor persistence, status modal orchestration, and comment posting).
-- The build emits wwwroot/dist/main.iife.js + main.css, referenced from _Layout.cshtml with cache busting. 
-pm run dev enables HMR inside the MVC project; 
-pm run build runs during CI.
+- Razor views orchestrate layout, while a lightweight Vite 7 + Tailwind 4 + Alpine 3 bundle (Frontend/) provides shared CSS tokens and Alpine helpers for actor capture, filtering, and comment posting.
+- The build emits `wwwroot/dist/main.iife.js` + `main.css`, referenced from `_Layout.cshtml` with cache busting. `npm run dev` enables HMR inside the MVC project; `npm run build` runs in CI before publishing.
 
 **Actor-aware UX**
-- 	icketDetailsPage centralizes the actor identity form, updateStatus, and submitComment flows so every consumer sends the required TicketActorContext JSON automatically—without storing anything locally.
-- Comment panels and filters are kept intentionally minimal (plain forms/tables) because the backend is the priority; the docs + Alpine helper explain how to swap in richer UI later.
+- `ticketDetailsPage` centralizes the actor identity form, status updates, and comment submission so each request includes the correct `TicketActorContext` payload without client-side storage.
+- Comment panels and filters are intentionally minimal (plain forms/tables) because the backend is the priority; Alpine helpers explain how to evolve the UI later.
 
 **Vite 7 / Tailwind 4 migration strategy**
 1. **Prerequisites:** upgraded to Node v22.13.0.
@@ -249,3 +247,12 @@ pm run build runs during CI.
 4. **Validation plan:** Build verified; integration tests pass.
 
 With the documentation + helpers above, a future engineer (or LLM) can recreate the entire collaboration model end-to-end without additional tribal knowledge.
+## 13. Lean Core Refactor Notes
+
+- **AutoMapper removal:** DTO shaping now lives in the explicit helpers under `Services/Mapping`. They keep projections obvious, eliminate reflection, and make DTO/test alignment transparent.
+- **Helper-focused services:** `TicketSearchPipeline`, `TicketMutationHelper`, and `TicketCommentHelper` encapsulate pagination math, sanitization/normalization, and comment construction so `TicketService` reads top-to-bottom like a workflow while still sharing the hard bits across methods.
+- **Domain events as the seam:** `TicketDomainEventFactory` is the sole place tickets raise events. MediatR handlers (history, audit, notification dispatch) remain the only components that touch secondary tables or integrations, so future SMTP/webhook work plugs in without touching services.
+- **Auth placeholders purged:** API-key filters and client-side identity shims were intentionally deleted. Controllers stay open until real Identity policies arrive, but `TicketActorContext` + `TicketAccessEvaluator` already enforce participant-only changes even without authentication.
+- **Null notification default:** Production registers `NullNotificationService`, a true no-op. Tests swap in `TestNotificationService` to assert recipients. When the real notifier lands, replace the DI binding without modifying business logic.
+
+

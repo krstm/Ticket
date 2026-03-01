@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Ticket.Domain.Entities;
 using Ticket.Domain.Enums;
 using TicketEntity = Ticket.Domain.Entities.Ticket;

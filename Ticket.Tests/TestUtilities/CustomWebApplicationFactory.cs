@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +35,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         {
             var overrides = new Dictionary<string, string?>
             {
-                [$"{ApiKeyOptions.SectionName}:CategoryManagement"] = "integration-key",
                 [$"{RateLimitingOptions.SectionName}:PermitLimit"] = _rateLimit.ToString(),
                 [$"{RateLimitingOptions.SectionName}:WindowSeconds"] = "1",
                 [$"{RateLimitingOptions.SectionName}:QueueLimit"] = "0"

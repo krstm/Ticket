@@ -12,7 +12,6 @@ using Ticket.Data;
 using Ticket.Filters;
 using Ticket.Interfaces.Infrastructure;
 using Ticket.Interfaces.Services;
-using Ticket.Mapping;
 using Ticket.ModelBinding;
 using Ticket.Services;
 using Ticket.Services.Infrastructure;
@@ -24,7 +23,6 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<ApiKeyOptions>(configuration.GetSection(ApiKeyOptions.SectionName));
         services.Configure<RateLimitingOptions>(configuration.GetSection(RateLimitingOptions.SectionName));
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
 
@@ -34,15 +32,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IReportingService, ReportingService>();
-        services.AddScoped<INotificationService, NotificationPlaceholderService>();
+        services.AddScoped<INotificationService, NullNotificationService>();
         services.AddScoped<IDepartmentService, DepartmentService>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IContentSanitizer, HtmlContentSanitizer>();
-        services.AddSingleton<IApiKeyValidator, ApiKeyValidator>();
         services.AddSingleton<TicketAccessEvaluator>();
-
-        services.AddAutoMapper(typeof(TicketProfile).Assembly);
 
         services.AddMediatR(typeof(Program).Assembly);
 

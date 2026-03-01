@@ -1,4 +1,5 @@
-using AutoMapper;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ticket.Data;
@@ -8,24 +9,22 @@ using Ticket.DTOs.Responses;
 using Ticket.Exceptions;
 using Ticket.Interfaces.Infrastructure;
 using Ticket.Interfaces.Services;
+using Ticket.Services.Mapping;
 
 namespace Ticket.Services;
 
 public class CategoryService : ICategoryService
 {
     private readonly ApplicationDbContext _context;
-    private readonly IMapper _mapper;
     private readonly IClock _clock;
     private readonly ILogger<CategoryService> _logger;
 
     public CategoryService(
         ApplicationDbContext context,
-        IMapper mapper,
         IClock clock,
         ILogger<CategoryService> logger)
     {
         _context = context;
-        _mapper = mapper;
         _clock = clock;
         _logger = logger;
     }
@@ -39,7 +38,7 @@ public class CategoryService : ICategoryService
         }
 
         var categories = await query.OrderBy(c => c.Name).ToListAsync(ct);
-        return _mapper.Map<IReadOnlyCollection<CategoryDto>>(categories);
+        return categories.Select(c => c.ToDto()).ToArray();
     }
 
     public async Task<CategoryDto> CreateAsync(CategoryCreateRequest request, CancellationToken ct)
@@ -59,7 +58,7 @@ public class CategoryService : ICategoryService
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Category {CategoryId} created", category.Id);
-        return _mapper.Map<CategoryDto>(category);
+        return category.ToDto();
     }
 
     public async Task<CategoryDto> UpdateAsync(int id, CategoryUpdateRequest request, CancellationToken ct)
@@ -75,7 +74,7 @@ public class CategoryService : ICategoryService
         category.UpdatedAtUtc = _clock.UtcNow;
 
         await _context.SaveChangesAsync(ct);
-        return _mapper.Map<CategoryDto>(category);
+        return category.ToDto();
     }
 
     public async Task DeactivateAsync(int id, CancellationToken ct)

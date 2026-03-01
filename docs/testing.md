@@ -11,6 +11,7 @@ This document acts as the "test constitution" for the repository. A future engin
 3. **Adversarial mindset:** Tests are written to break the code. Payloads deliberately omit headers, reuse stale row versions, flood rate limiters, exercise injection-like search terms, and supply invalid PageTokens. A suite that only asserts happy paths is considered incomplete.
 4. **Deterministic & fast:** Suites must run via dotnet test in a few seconds. Factories tighten rate limits and use the in-memory notifier spy to avoid network I/O.
 5. **Executable documentation:** Each test names the scenario plainly (DomainEvents_ShouldPersistHistory_And_FireNotifications, InvalidPageToken_ShouldReturnBadRequest, etc.), doubling as requirements documentation.
+6. **Notification seams stay mocked:** Every automated suite must override `INotificationService` with the spy/fake from `TestUtilities`. Never let a real notifier (SMTP/webhook, even a logging stub) run inside tests; doing so hides regressions and slows the pipeline. New notification handlers must add corresponding spy assertions before implementation starts.
 
 ---
 
@@ -42,7 +43,7 @@ Dependencies include Microsoft.AspNetCore.Mvc.Testing, Microsoft.EntityFramework
 - **Serialization**
   - Uses System.Text.Json with camelCase conventions, matching the API defaults.
 
-Result: tests never hit real infrastructure, yet they exercise the full ASP.NET Core pipeline, EF Core, AutoMapper, FluentValidation, MediatR, and logging scopes.
+Result: tests never hit real infrastructure, yet they exercise the full ASP.NET Core pipeline, EF Core, the manual mapping extensions, FluentValidation, MediatR, and logging scopes.
 
 ---
 
@@ -90,12 +91,16 @@ dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Security.Secu
 
 No external services (SMTP, queues, SQL Server) are required; everything spins up inside the xUnit host.
 
+### 5.1 Latest Execution Log
+- 2026-03-02 02:35 UTC+3 — `dotnet test Ticket.sln` (Passed, 25 tests, warnings only for nullable analysis).
+- 2026-03-02 02:33 UTC+3 — `cmd /c "cd Ticket && npm run build"` (Vite 7/Tailwind 4 bundle emitted `wwwroot/dist/main.iife.js` + `main.css` without warnings).
+
 ---
 
 ## 6. Isolation Guarantees & Test Doubles
 
 - **Database safety:** CustomWebApplicationFactory removes the production DbContextOptions<ApplicationDbContext> registration and replaces it with InMemory options. It uses unique names so parallel test classes never collide. ResetStateAsync truncates data between tests and also resets the notification spy.
-- **Notifications:** TestNotificationService records CreatedEvents and ResolvedEvents, letting tests assert domain events fired without making network calls. Production code uses NotificationPlaceholderService, but tests prove the plumbing works.
+- **Notifications:** TestNotificationService records CreatedEvents and ResolvedEvents, letting tests assert domain events fired without making network calls. Production code wires `NullNotificationService`, so only tests exercise real dispatch logic.
 - **RowVersion emulation:** ApplicationDbContext stamps RowVersion on InMemory providers, enabling realistic optimistic concurrency tests.
 - **Rate limiting:** Factory overrides RateLimitingOptions to PermitLimit=rateLimit, WindowSeconds=1, QueueLimit=0, ensuring deterministic throttling scenarios.
 
@@ -115,8 +120,30 @@ By following this playbook, every capability (especially edge cases) remains tes
 ## 8. Frontend Build Spot-Checks
 - Run `npm install` once per clone; afterwards `npm run dev` (or `npm run build`) ensures Vite/Tailwind regenerate `wwwroot/dist`.
 - Razor UI smoke-tests piggyback on the integration suite because the controllers/views render real HTML. Before shipping major UI tweaks, run `npm run build` and `dotnet test` to guarantee the bundle + backend both compile.
-- `npm audit` currently reports the esbuild advisory (moderate). Remediating it requires upgrading to Vite 7 (and Tailwind 4), which is tracked separately because it forces new config conventions.
+- `npm audit` currently reports zero issues (Mar 2, 2026). We still plan the Vite 7/Tailwind 4/Node 22 migration to stay ahead of advisories even when the report is clean.
 ### 4.4 Department & Comment Flows
 - Integration tests now cover department filtering (DepartmentFilters_ShouldLimitSearchResults), permissions (DepartmentMember_EditPermissions_ShouldBeEnforced), and the public /tickets/{id}/comments APIs.
 - Security suite includes adversarial assertions: outsiders attempting updates/comments receive 403s, scripted comments are sanitized, and rate limiting still works after the department bootstrap stage.
 - Whenever a new capability is added (mail hooks, future auth), start by cloning one of these tests so we keep the “test first, implement after” habit.
+
+---
+
+## 9. Security Scans & Manual Review Log
+
+| Timestamp (UTC+3) | Command | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-03-02 02:32 | `dotnet list Ticket/Ticket.csproj package --vulnerable` | **No vulnerable packages found.** | Required gate before merging to main. |
+| 2026-03-02 02:33 | `dotnet list Ticket/Ticket.csproj package --outdated` | EF Core 8.0.6 → 10.0.3, Serilog 8.x → 10.x updates available. | Logged for later; upgrade only when time is allocated for full regression. |
+| 2026-03-02 02:34 | `cmd /c "cd Ticket && npm audit --json"` | 0 vulnerabilities (prod 5, dev 129 deps). | Attach the JSON blob to CI artifacts for traceability. |
+| 2026-03-02 02:35 | `rg -n -i "eval\(|CodeDom|ProcessStart"` | Matches limited to vendor JS (jquery*, validation bundles). | Reviewed and accepted; no project code uses `eval`/CodeDom/Process spawning. |
+| 2026-03-02 02:35 | `rg -n "TODO|HACK|FIXME"` | Hits only inside vendor bundles. | No latent TODOs inside our code path. |
+
+**Manual spot checks (2026-03-02 02:36 UTC+3):**
+- `TicketService`, `TicketHistoryHandler`, `NotificationDispatcherHandler`, and all controllers were reviewed for unchecked string concatenation or unsanitized user input. All paths continue to flow through FluentValidation, HtmlContentSanitizer, normalization helpers, and EF parameterization (no raw SQL/string concatenation).
+- Domain-event handlers (history + audit + notification dispatch) only operate after SaveChanges succeeds; they reuse the existing DbContext scope so no nested transactions or partial writes surfaced.
+
+**Required before release:**
+1. Run `dotnet list Ticket/Ticket.csproj package --vulnerable` and `npm audit --json`. Fail the pipeline if either reports a CVE.
+2. Run `dotnet list ... --outdated` to capture pending dependency bumps (attach the output to the release notes even if we defer upgrades).
+3. Optional but recommended: `dotnet format analyzers --verify-no-changes` and `trufflehog filesystem --since HEAD~50` if those tools are available. Document results in this table.
+4. Run the `rg` sweeps above. Any hits outside `wwwroot/lib` require remediation or an explicit risk acceptance in this document.
