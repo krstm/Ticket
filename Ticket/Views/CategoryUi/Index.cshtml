@@ -1,0 +1,62 @@
+@model IEnumerable<Ticket.DTOs.Responses.CategoryDto>
+@{
+    ViewData["Title"] = "Category Management";
+}
+
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight">Categories</h2>
+            <p class="mt-2 text-slate-500">Manage categories used for organizing support requests.</p>
+        </div>
+        <a asp-controller="CategoryUi" asp-action="Create" class="btn btn-primary">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            New Category
+        </a>
+    </div>
+
+    <div class="card overflow-hidden">
+        <ul role="list" class="divide-y divide-slate-100">
+            @if (!Model.Any())
+            {
+                <li class="py-12 text-center">
+                    <svg class="mx-auto h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-semibold text-slate-900">No categories</h3>
+                    <p class="mt-1 text-sm text-slate-500">Get started by creating a new category.</p>
+                </li>
+            }
+            else
+            {
+                @foreach (var category in Model)
+                {
+                    <li class="p-6 hover:bg-slate-50 transition-colors">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center space-x-3">
+                                    <p class="text-sm font-semibold text-slate-900 truncate">@category.Name</p>
+                                    @if (category.IsActive)
+                                    {
+                                        <span class="badge bg-emerald-100 text-emerald-700">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-slate-100 text-slate-700">Inactive</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(category.Description))
+                                {
+                                    <p class="mt-1 text-sm text-slate-500 line-clamp-2">@category.Description</p>
+                                }
+                            </div>
+                            <div class="ml-6 flex items-center shrink-0 space-x-4">
+                                <span class="text-sm text-slate-500">ID: @category.Id</span>
+                            </div>
+                        </div>
+                    </li>
+                }
+            }
+        </ul>
+    </div>
+</div>
