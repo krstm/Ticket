@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
+    plugins: [
+        tailwindcss(),
+    ],
     build: {
-        outDir: '../wwwroot/dist',
+        outDir: 'wwwroot/dist',
         emptyOutDir: true,
         lib: {
             entry: path.resolve(__dirname, 'Frontend/src/main.js'),
@@ -20,5 +24,4 @@ export default defineConfig({
             },
         },
     },
-    root: 'Frontend',
 });

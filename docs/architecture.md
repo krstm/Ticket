@@ -167,7 +167,8 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 ### 8.4 Frontend build workflow
 - Run `npm install` (once) followed by `npm run dev` for live Tailwind/Alpine changes inside the Frontend/ workspace.
 - `npm run build` compiles the Vite library entry (`Frontend/src/main.js`) into `wwwroot/dist/main.iife.js` + `main.css`, which `_Layout.cshtml` references via `asp-append-version`.
-- TailwindCSS 3.4 + Vite 5 remain in place because the Tailwind 4/Vite 7 stacks would force a config rewrite plus Node 22. The only outstanding npm audit alert is the esbuild vulnerability fixed by Vite 7, so the upgrade is tracked but deferred until we are ready for that breaking change.
+- TailwindCSS 4 + Vite 7 are now active. The build uses the `@tailwindcss/vite` plugin and the new CSS-first `@theme` configuration. Node 22 is required for this toolchain.
+- The esbuild advisory is resolved by the Vite 7 upgrade.
 
 ---
 
@@ -242,10 +243,9 @@ pm run build runs during CI.
 - Comment panels and filters are kept intentionally minimal (plain forms/tables) because the backend is the priority; the docs + Alpine helper explain how to swap in richer UI later.
 
 **Vite 7 / Tailwind 4 migration strategy**
-1. **Prerequisites:** upgrade the Node toolchain to v22.x, install PNPM or stay on npm 10+, and plan to regenerate lockfiles. Tailwind 4 switches to the new "oxide" engine, so PostCSS plugins must be updated to @tailwindcss/postcss.
-2. **Config rewrite:** Vite 7 encourages ite.config.ts. Tailwind 4 collapses content globs and introduces the 	heme.extend reset. This doc enumerates every file needing edits: package.json, ite.config, 	ailwind.config, postcss.config, and the Azure/CI build scripts.
-3. **esbuild advisory mitigation:** the only outstanding npm audit warning today is the esbuild vulnerability bundled with Vite 5. Upgrading to Vite 7 pulls the patched esbuild automatically. Until then, keep the advisory suppressed with context notes in docs/frontend.md.
-4. **Validation plan:** after upgrading, run 
-pm run lint && npm run build, followed by dotnet publish to ensure the IIFE is still copied to wwwroot/dist. Integration tests already render Razor pages, so no extra smoke tests are required once the bundle hashes update.
+1. **Prerequisites:** upgraded to Node v22.13.0.
+2. **Config rewrite:** Migrated to Vite 7 + Tailwind 4. Replaced `tailwind.config.js` and `postcss.config.js` with CSS-native `@theme` variables in `index.css`.
+3. **esbuild advisory mitigation:** Resolved by upgrading to Vite 7.
+4. **Validation plan:** Build verified; integration tests pass.
 
 With the documentation + helpers above, a future engineer (or LLM) can recreate the entire collaboration model end-to-end without additional tribal knowledge.

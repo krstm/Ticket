@@ -4,10 +4,8 @@ This file is the zero-context briefing for the Razor + Vite experience. Hand it 
 
 ## 1. Stack Overview
 - **Layout**: Views/Shared/_Layout.cshtml renders the responsive shell, pulls Inter from Google Fonts, and loads wwwroot/dist/main.iife.js + main.css.
-- **Tooling**: Vite 5 + Tailwind 3 + Alpine 3 live under Ticket/Frontend/. 
-pm run dev boots the Vite dev server; 
-pm run build emits production assets into wwwroot/dist/ (which is tracked so backend-only deployments still ship the bundle).
-- **Design system**: 	ailwind.config.js defines the corporate palette + font stack. Frontend/src/css/index.css wires Tailwind layers and component helpers (buttons, cards, nav-links, badges).
+- **Tooling**: Vite 7 + Tailwind 4 + Alpine 3 live under Ticket/Frontend/. 
+- **Design system**: Tailwind 4 uses the new CSS-first engine. Variables and theme tokens are defined directly in `Frontend/src/css/index.css` via the `@theme` block.
 - **JavaScript entry**: Frontend/src/main.js registers Alpine and exports helper factories—most notably 	icketDetailsPage, which powers the ticket detail interactions.
 
 ## 2. Build & Verification Workflow
@@ -39,5 +37,7 @@ pm run build to refresh wwwroot/dist/ before committing or publishing.
 4. **Bundle verification**: 
 pm run build (confirm new hashed files), then dotnet test to ensure MVC still serves the bundle.
 5. **Security**: upgrading Vite pulls the patched esbuild resolving the current audit warning; document any interim suppressions if rollout is delayed.
+- **Status**: Completed. Stack is now Vite 7 + Tailwind 4.
+- **Verification**: `npm run build` and `dotnet test` verify the integration.
 
 Follow this guide to work on the UI without spelunking through the repo.
