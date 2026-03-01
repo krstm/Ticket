@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
   workflow_dispatch: # Manuel tetikleme özelliği
   schedule:
-    - cron: '30 0 * * *' # Her gün gece 00:30'da otomatik tarama
+    - cron: '30 0 * * 0' # Her pazar gece 00:30'da otomatik tarama
 
 jobs:
   analyze:
