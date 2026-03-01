@@ -26,15 +26,15 @@
 <div class="flex flex-col lg:flex-row gap-8" x-data="{ 
     filtersOpen: false,
     search: '@(Context.Request.Query["SearchTerm"])',
-    priority: '@(Context.Request.Query["Priority"])',
-    status: '@(Context.Request.Query["Status"])',
-    category: '@(Context.Request.Query["CategoryId"])',
+    priority: '@(Context.Request.Query["Priorities"])',
+    status: '@(Context.Request.Query["Statuses"])',
+    category: '@(Context.Request.Query["CategoryIds"])',
     submitFilters() {
         let url = new URL(window.location);
         if(this.search) url.searchParams.set('SearchTerm', this.search); else url.searchParams.delete('SearchTerm');
-        if(this.priority) url.searchParams.set('Priority', this.priority); else url.searchParams.delete('Priority');
-        if(this.status) url.searchParams.set('Status', this.status); else url.searchParams.delete('Status');
-        if(this.category) url.searchParams.set('CategoryId', this.category); else url.searchParams.delete('CategoryId');
+        if(this.priority) url.searchParams.set('Priorities', this.priority); else url.searchParams.delete('Priorities');
+        if(this.status) url.searchParams.set('Statuses', this.status); else url.searchParams.delete('Statuses');
+        if(this.category) url.searchParams.set('CategoryIds', this.category); else url.searchParams.delete('CategoryIds');
         url.searchParams.delete('PageToken'); // Reset pagination on filter change
         window.location = url;
     }
@@ -145,12 +145,12 @@
 
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
                                 <span class="font-medium text-slate-700">@ticket.ReferenceCode</span>
-                                <span class="text-slate-300">•</span>
+                                <span class="text-slate-300">&middot;</span>
                                 <span class="flex items-center">
                                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 11h.01M7 15h.01M11 7h.01M11 11h.01M11 15h.01M15 7h.01M15 11h.01M15 15h.01M19 7h.01M19 11h.01M19 15h.01M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                                     @ticket.CategoryName
                                 </span>
-                                <span class="text-slate-300">•</span>
+                                <span class="text-slate-300">&middot;</span>
                                 <span>Created @ticket.CreatedAtUtc.ToLocalTime().ToString("g")</span>
                             </div>
                         </div>

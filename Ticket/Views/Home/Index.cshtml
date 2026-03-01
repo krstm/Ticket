@@ -28,7 +28,7 @@
             <h2 class="text-2xl font-bold text-slate-900">Recent Activity</h2>
             <p class="text-slate-500 mt-1">Latest requests across all categories</p>
         </div>
-        <a asp-controller="Tickets" asp-action="Index" class="text-sm font-semibold text-primary-600 hover:text-primary-700">
+        <a asp-controller="TicketUi" asp-action="Index" class="text-sm font-semibold text-primary-600 hover:text-primary-700">
             View all <span aria-hidden="true">&rarr;</span>
         </a>
     </div>
@@ -44,7 +44,7 @@
                 <h3 class="mt-2 text-sm font-medium text-slate-900">No requests</h3>
                 <p class="mt-1 text-sm text-slate-500">Get started by creating a new request.</p>
                 <div class="mt-6">
-                    <a asp-controller="Tickets" asp-action="Create" class="btn btn-primary">
+                    <a asp-controller="TicketUi" asp-action="Create" class="btn btn-primary">
                         New Request
                     </a>
                 </div>
@@ -70,11 +70,11 @@
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2 mb-1">
                                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">@item.CategoryName</span>
-                                        <span class="text-slate-300">•</span>
+                                        <span class="text-slate-300">&middot;</span>
                                         <time class="text-xs text-slate-500">@item.CreatedAtUtc.ToLocalTime().ToString("MMM dd, HH:mm")</time>
                                     </div>
                                     <h3 class="text-lg font-bold text-slate-900 truncate group-hover:text-primary-600 transition-colors">
-                                        <a asp-controller="Tickets" asp-action="Details" asp-route-id="@item.Id">@item.Title</a>
+                                        <a asp-controller="TicketUi" asp-action="Details" asp-route-id="@item.Id">@item.Title</a>
                                     </h3>
                                 </div>
                                 <div class="flex-shrink-0 flex flex-col items-end gap-2">

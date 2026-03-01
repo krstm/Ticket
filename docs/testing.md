@@ -55,12 +55,12 @@ Result: tests never hit real infrastructure, yet they exercise the full ASP.NET 
 
 ### 4.2 Integration Tests (Ticket.Tests/Integration/TicketApiTests)
 Key scenarios:
-1. **Ticket lifecycle:** Create › update › multi-step status transitions › search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
+1. **Ticket lifecycle:** Create â€º update â€º multi-step status transitions â€º search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
 2. **Concurrency:** PUT with stale If-Match returns 409.
 3. **Reporting:** /reports/summary grouping by category.
 4. **Keyset pagination:** Requests with PageToken return stable slices, no duplicates, and opaque tokens.
 5. **Search scope:** SearchScope=TitleOnly ignores description matches; FullContent finds them.
-6. **Domain events:** After creation/resolution, history rows exist and notification spies capture events—proving MediatR handlers ran instead of services mutating history directly.
+6. **Domain events:** After creation/resolution, history rows exist and notification spies capture eventsâ€”proving MediatR handlers ran instead of services mutating history directly.
 
 ### 4.3 Security/Hardening Tests (Ticket.Tests/Security)
 - API-key enforcement on category endpoints.
@@ -109,3 +109,10 @@ No external services (SMTP, queues, SQL Server) are required; everything spins u
 4. **Performance/soak tests?** Keep them out of this test project; create a separate pipeline so the core suite stays fast.
 
 By following this playbook, every capability (especially edge cases) remains testable, isolated from real infrastructure, and adversarial enough to detect regressions early.
+
+---
+
+## 8. Frontend Build Spot-Checks
+- Run `npm install` once per clone; afterwards `npm run dev` (or `npm run build`) ensures Vite/Tailwind regenerate `wwwroot/dist`.
+- Razor UI smoke-tests piggyback on the integration suite because the controllers/views render real HTML. Before shipping major UI tweaks, run `npm run build` and `dotnet test` to guarantee the bundle + backend both compile.
+- `npm audit` currently reports the esbuild advisory (moderate). Remediating it requires upgrading to Vite 7 (and Tailwind 4), which is tracked separately because it forces new config conventions.

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "alpinejs": "^3.13.5",
-    "lucide-static": "^0.344.0"
-  }
+    "lucide-static": "^0.575.0"
+  },
+  "type": "module"
 }
