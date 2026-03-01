@@ -1,0 +1,45 @@
+name: .NET Core CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # 1. Node.js Kurulumu (Tailwind v4 ve Vite 7 için gerekli)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22 # Projemizde kullandığımız sürüm
+
+    # 2. Frontend Bağımlılıkları ve Build (main.css ve main.iife.js üretimi)
+    - name: Install NPM dependencies & Build Frontend
+      working-directory: ./Ticket # package.json'ın olduğu dizin
+      run: |
+        npm ci
+        npm run build
+
+    # 3. .NET Kurulumu
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    # 4. .NET Bağımlılıklarını Geri Yükleme
+    - name: Restore dependencies
+      run: dotnet restore
+
+    # 5. Build (Frontend dosyaları artık wwwroot içinde mevcut)
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    # 6. Testler (Veritabanı bağımlılığı olmayan testler bu aşamada koşar)
+    - name: Test
+      run: dotnet test --no-build --verbosity normal --configuration Release
