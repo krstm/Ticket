@@ -1,8 +1,42 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@model IEnumerable<Ticket.DTOs.ViewModels.TimelineItemViewModel>
+@{
+    ViewData["Title"] = "Ticket Timeline";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<section>
+    <h1>Latest Tickets</h1>
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Created</th>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Due</th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (Model == null || !Model.Any())
+        {
+            <tr>
+                <td colspan="6">No tickets yet.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var ticket in Model)
+            {
+                <tr>
+                    <td>@ticket.CreatedAtUtc.ToLocalTime().ToString("g")</td>
+                    <td>@ticket.Title</td>
+                    <td>@ticket.CategoryName</td>
+                    <td>@ticket.Priority</td>
+                    <td>@ticket.Status</td>
+                    <td>@(ticket.DueAtUtc?.ToLocalTime().ToString("g") ?? "-")</td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</section>
