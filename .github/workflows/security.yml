@@ -1,0 +1,54 @@
+name: "Security Analysis"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '30 0 * * *' # Her gün gece 00:30'da otomatik tarama
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 1. Frontend Build (CodeQL'in JS ve CSS yapılandırmasını anlaması için)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    - name: Build Frontend
+      working-directory: ./Ticket
+      run: |
+        npm ci
+        npm run build
+
+    # 2. .NET Build (CodeQL'in C# kodunu analiz edebilmesi için derleme şarttır)
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    - name: .NET Restore & Build
+      run: |
+        dotnet restore
+        dotnet build --configuration Release
+
+    # 3. CodeQL Başlatma
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: 'csharp, javascript'
+        queries: security-extended,security-and-quality
+
+    # 4. CodeQL Analizi
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
