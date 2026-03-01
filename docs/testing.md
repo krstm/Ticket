@@ -8,9 +8,10 @@ This document is a “test constitution” for the repository. It is written so 
 
 1. **Full Capability Coverage:** Every feature must be exercised end-to-end, across all edge cases, failure paths, and security scenarios. A feature is considered “complete” only when its happy-path, sad-path, concurrency, and abuse cases are under automated test.
 2. **Real Database Isolation:** No automated test is allowed to talk to a shared/production database. All tests MUST run against disposable providers (InMemory/SQLite) or isolated containers. A failing test must never corrupt persistent data.
-3. **Repeatable & Deterministic:** Tests should produce identical results regardless of run order or machine. Use `EnsureDeleted/EnsureCreated`, in-memory clocks, and factory resets to keep state separated.
-4. **Fast Feedback:** Unit and integration suites are expected to run via `dotnet test` in under a few seconds. Heavy, long-running scenarios should be flagged and potentially moved to a separate pipeline.
-5. **Executable Documentation:** Every high-level scenario (ticket lifecycle, rate limiting, XSS protection) should be represented by a readable test that doubles as documentation.
+3. **Adversarial Mindset:** Tests are written to *break* the code, not to rubber-stamp it. Prefer payloads that would exploit weaknesses (invalid headers, `If-Match` mismatches, injection strings, flood requests). A test suite that never fails is not trusted.
+4. **Repeatable & Deterministic:** Tests should produce identical results regardless of run order or machine. Use `EnsureDeleted/EnsureCreated`, in-memory clocks, and factory resets to keep state separated.
+5. **Fast Feedback:** Unit and integration suites are expected to run via `dotnet test` in under a few seconds. Heavy, long-running scenarios should be flagged and potentially moved to a separate pipeline.
+6. **Executable Documentation:** Every high-level scenario (ticket lifecycle, rate limiting, XSS protection) should be represented by a readable test that doubles as documentation.
 
 ---
 
@@ -89,6 +90,7 @@ All commands stay inside the repo root. No additional services need to be launch
 - **Database Safety:** Tests never hit LocalDB/SQL Server. The factory removes existing `DbContextOptions<ApplicationDbContext>` and replaces it with `UseInMemoryDatabase`. The in-memory store name is randomized per factory so parallel test classes won’t clash.
 - **RowVersion Emulation:** Because InMemory DB does not generate rowversion columns, `ApplicationDbContext` stamps `RowVersion` with GUID bytes on every save. This keeps optimistic concurrency tests realistic even without SQL Server.
 - **Reset Strategy:** `EnsureDeleted` + `EnsureCreated` inside `ResetStateAsync` ensures global test state does not leak, satisfying the “no real data touched” rule (Test Constitution clause #2).
+- **Adversarial Scenarios:** When designing new tests, first imagine how a malicious or careless user would break the feature (invalid `X-API-Key`, simultaneous writes, huge payloads). Encode these attacks as automated tests to keep regression pressure high.
 
 ---
 

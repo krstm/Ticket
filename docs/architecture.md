@@ -40,7 +40,7 @@ This document is intentionally verbose so that a developer (or another LLM with 
 | `Data/` | `ApplicationDbContext` (with provider-aware row-version emulation for SQLite/InMemory), `DesignTimeDbContextFactory`, and EF migrations in `Data/Migrations/`. |
 | `Views/` | Minimal Razor views; currently the Home timeline uses a table to list latest tickets. |
 | `wwwroot/` | Placeholder for static content (empty for now). |
-| `docs/` | Architecture and testing guides (this file + `testing.md`). |
+| `docs/` | Architecture and testing guides (this file + `testing.md`). Keep these updated as the single source of truth for new contributors or LLM agents. |
 | `Ticket.Tests/` | Separate test project (see `docs/testing.md` for detailed breakdown). |
 
 ---
@@ -169,7 +169,15 @@ This document is intentionally verbose so that a developer (or another LLM with 
 
 ---
 
-## 8. Endpoints Overview
+## 8. Testing & Quality Mandates
+
+- **Adversarial Suites:** Every new feature must ship with tests designed to break it (invalid payloads, stale row versions, malicious inputs, rate-limit abuse, etc.). “Happy path only” tests are forbidden.
+- **Database Isolation:** Automated tests never touch a real database. `CustomWebApplicationFactory` replaces the DbContext with `UseInMemoryDatabase` so test runs cannot damage shared resources. If a new test introduces any external dependency, isolation must be preserved (e.g., using containers or mocks).
+- **Docs as Contract:** Before onboarding a new subsystem or LLM, ensure `docs/architecture.md` and `docs/testing.md` reflect the latest flows and rules.
+
+---
+
+## 9. Endpoints Overview
 
 | Method | Route | Description |
 | --- | --- | --- |
@@ -189,7 +197,7 @@ This document is intentionally verbose so that a developer (or another LLM with 
 
 ---
 
-## 9. Future Enhancements
+## 10. Future Enhancements
 - Authentication & Authorization (replace API key guard with proper policies).
 - Department dimension + assignment workflows once users exist.
 - Rich UI/UX (component library, live updates, filters) once the service layer stabilizes.
