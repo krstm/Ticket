@@ -1,4 +1,4 @@
-# Ticket Platform - Testing Charter & Playbook
+﻿# Ticket Platform - Testing Charter & Playbook
 
 This document acts as the "test constitution" for the repository. A future engineer (or LLM with zero context) should be able to understand the full philosophy, tooling, and coverage strategy by reading this file alone.
 
@@ -22,7 +22,7 @@ Ticket.Tests/
 | --- | --- |
 | Unit/ | Pure logic tests (TicketQueryParametersValidatorTests, TicketStatusTransitionRulesTests, etc.). No HTTP/EF dependencies. |
 | Integration/ | Full-stack API tests using CustomWebApplicationFactory (real middleware, EF context, MediatR handlers). Exercises lifecycle, pagination, domain events, reporting, and auditing. |
-| Security/ | Abuse/regression scenarios: API-key enforcement, sanitization, rate limiting, SQL-like searches, invalid page tokens. |
+| Security/ | Abuse/regression scenarios: sanitization, rate limiting, SQL-like searches, invalid page tokens, and unauthorized actor attempts. |
 | TestUtilities/ | Shared infrastructure: CustomWebApplicationFactory, IntegrationTestBase, TestNotificationService, JSON helpers. |
 
 Dependencies include Microsoft.AspNetCore.Mvc.Testing, Microsoft.EntityFrameworkCore.InMemory, Microsoft.EntityFrameworkCore.Sqlite (reserved), and xUnit. No mocking framework is needed because most tests run the real pipeline.
@@ -55,19 +55,19 @@ Result: tests never hit real infrastructure, yet they exercise the full ASP.NET 
 
 ### 4.2 Integration Tests (Ticket.Tests/Integration/TicketApiTests)
 Key scenarios:
-1. **Ticket lifecycle:** Create › update › multi-step status transitions › search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
+1. **Ticket lifecycle:** Create â†’ update â†’ multi-step status transitions â†’ search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
 2. **Concurrency:** PUT with stale If-Match returns 409.
 3. **Reporting:** /reports/summary grouping by category.
 4. **Keyset pagination:** Requests with PageToken return stable slices, no duplicates, and opaque tokens.
 5. **Search scope:** SearchScope=TitleOnly ignores description matches; FullContent finds them.
-6. **Domain events:** After creation/resolution, history rows exist and notification spies capture events—proving MediatR handlers ran instead of services mutating history directly.
+6. **Domain events:** After creation/resolution, history rows exist and notification spies capture eventsâ€”proving MediatR handlers ran instead of services mutating history directly.
 
 ### 4.3 Security/Hardening Tests (Ticket.Tests/Security)
-- API-key enforcement on category endpoints.
-- XSS sanitization (persisted body differs from <script> payloads).
+- XSS sanitization (persisted body differs from `<script>` payloads).
 - Rate limiting deterministic 429s.
 - SQL-injection-like search term returns 200 instead of crashing.
 - Invalid PageToken yields HTTP 400 (ensures gatekeeping of keyset API).
+- Unauthorized actors attempting updates/comments receive 403 while participants succeed.
 
 ---
 
@@ -119,4 +119,4 @@ By following this playbook, every capability (especially edge cases) remains tes
 ### 4.4 Department & Comment Flows
 - Integration tests now cover department filtering (DepartmentFilters_ShouldLimitSearchResults), permissions (DepartmentMember_EditPermissions_ShouldBeEnforced), and the public /tickets/{id}/comments APIs.
 - Security suite includes adversarial assertions: outsiders attempting updates/comments receive 403s, scripted comments are sanitized, and rate limiting still works after the department bootstrap stage.
-- Whenever a new capability is added (mail hooks, future auth), start by cloning one of these tests so we keep the �test first, implement after� habit.
+- Whenever a new capability is added (mail hooks, future auth), start by cloning one of these tests so we keep the “test first, implement after” habit.

@@ -32,7 +32,6 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpPost]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> CreateAsync([FromBody] DepartmentCreateRequest request, CancellationToken ct)
     {
@@ -41,7 +40,6 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> UpdateAsync(int id, [FromBody] DepartmentUpdateRequest request, CancellationToken ct)
     {

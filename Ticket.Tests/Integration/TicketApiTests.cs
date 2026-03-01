@@ -521,7 +521,6 @@ public class TicketApiTests : IntegrationTestBase
                 Name = name
             })
         };
-        request.Headers.Add("X-API-Key", "integration-key");
         var response = await Client.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
@@ -550,7 +549,6 @@ public class TicketApiTests : IntegrationTestBase
                 }
             })
         };
-        request.Headers.Add("X-API-Key", "integration-key");
         var response = await Client.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {

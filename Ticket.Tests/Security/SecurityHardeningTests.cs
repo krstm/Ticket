@@ -18,20 +18,6 @@ public class SecurityHardeningTests
     };
 
     [Fact]
-    public async Task CategoryEndpoints_ShouldRequireApiKey()
-    {
-        using var factory = new CustomWebApplicationFactory();
-        var client = factory.CreateClient();
-
-        var response = await client.PostAsync("/categories", IntegrationTestBase.AsJson(new CategoryCreateRequest
-        {
-            Name = "Finance"
-        }));
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
     public async Task TicketCreation_ShouldSanitizeDescription()
     {
         using var factory = new CustomWebApplicationFactory();
@@ -235,7 +221,6 @@ public class SecurityHardeningTests
                 Name = name
             })
         };
-        message.Headers.Add("X-API-Key", "integration-key");
         var response = await client.SendAsync(message);
         if (!response.IsSuccessStatusCode)
         {
@@ -263,7 +248,6 @@ public class SecurityHardeningTests
                 }
             })
         };
-        message.Headers.Add("X-API-Key", "integration-key");
         var response = await client.SendAsync(message);
         if (!response.IsSuccessStatusCode)
         {

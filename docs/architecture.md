@@ -129,10 +129,10 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 1. **Input validation:** FluentValidation enforces lengths, enums, pagination limits, and date ordering. Validators explicitly forbid using PageToken with page > 1.
 2. **Sanitization:** HtmlContentSanitizer strips scripts/event attributes. Tests assert persisted data differs from raw XSS input.
 3. **Rate limiting:** Global fixed window (default 100 req/min) plus a "mutations" policy applied to POST/PUT/PATCH/DELETE. Integration tests tighten the window to force deterministic 429s. This relies on the built-in ASP.NET Core rate-limiting middleware so no extra NuGet package is required.
-4. **API keys:** CategoriesController uses ApiKeyAuthorizeAttribute to guard admin endpoints until real identity is added.
-5. **Centralized errors:** RFC-7807 responses include correlation IDs, hide stack traces outside Development, and map known exception types (BadRequestException, ConflictException, NotFoundException).
+4. **Centralized errors:** RFC-7807 responses include correlation IDs, hide stack traces outside Development, and map known exception types (BadRequestException, ConflictException, NotFoundException).
+5. **Identity readiness:** No temporary API keys or client-side hacks are in use. Instead, controllers accept unauthenticated traffic today while services, validators, and domain events already expose the seams (`TicketActorContext`, notification hooks) where a proper identity provider will plug in later.
 6. **Transport + headers:** HTTPS redirection, HSTS (non-development), and space for future CSP/XFO headers.
-7. **Guardrails proven by tests:** Security suite covers API keys, XSS sanitization, rate limiting, SQL-injection-style filters, and invalid page tokens.
+7. **Guardrails proven by tests:** Security suite covers XSS sanitization, rate limiting, SQL-injection-style filters, invalid page tokens, and department-only mutations via actor contexts.
 
 ---
 
@@ -225,7 +225,7 @@ With this architecture, every behaviour (validation, normalization, paging, doma
 
 **UI faceting**
 - The navigation now surfaces Departments. Ticket list filters gained a Department dropdown and result cards show the owning department badge.
-- Ticket details render department rosters, the comment feed, and a "Your Identity" card wired into Alpine/localStorage. Users declare whether they are the requester or a department member; every action reuses that actor payload so server-side authorization succeeds even before identity integration.
+- Ticket details render department rosters, the comment feed, and a "Your Identity" card that binds directly to Alpine state (no client-side persistence). Users declare whether they are the requester or a department member per action until authentication lands.
 
 ---
 
@@ -238,7 +238,7 @@ pm run dev enables HMR inside the MVC project;
 pm run build runs during CI.
 
 **Actor-aware UX**
-- 	icketDetailsPage centralizes localStorage-backed actor identity, updateStatus, and submitComment flows so every consumer sends the required TicketActorContext JSON automatically.
+- 	icketDetailsPage centralizes the actor identity form, updateStatus, and submitComment flows so every consumer sends the required TicketActorContext JSON automatically—without storing anything locally.
 - Comment panels and filters are kept intentionally minimal (plain forms/tables) because the backend is the priority; the docs + Alpine helper explain how to swap in richer UI later.
 
 **Vite 7 / Tailwind 4 migration strategy**

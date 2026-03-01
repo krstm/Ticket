@@ -19,25 +19,11 @@ window.ticketDetailsPage = (config) => ({
         email: '',
         actorType: 'Requester'
     },
-    init() {
-        const cached = localStorage.getItem('ticketActor');
-        if (cached) {
-            try {
-                this.actor = JSON.parse(cached);
-            } catch {
-                // ignore parsing errors
-            }
-        }
-    },
-    persistActor() {
-        localStorage.setItem('ticketActor', JSON.stringify(this.actor));
-    },
     ensureActor() {
         if (!this.actor.email || !this.actor.name) {
             alert('Please provide your name and email so we can authorize the action.');
             return false;
         }
-        this.persistActor();
         return true;
     },
     async updateStatus() {

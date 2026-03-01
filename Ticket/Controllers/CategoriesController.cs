@@ -25,7 +25,6 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPost]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> CreateAsync([FromBody] CategoryCreateRequest request, CancellationToken ct)
     {
@@ -34,7 +33,6 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> UpdateAsync(int id, [FromBody] CategoryUpdateRequest request, CancellationToken ct)
     {
@@ -43,7 +41,6 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> DeactivateAsync(int id, CancellationToken ct)
     {
@@ -52,7 +49,6 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPost("{id:int}/reactivate")]
-    [ApiKeyAuthorize]
     [EnableRateLimiting("mutations")]
     public async Task<IActionResult> ReactivateAsync(int id, CancellationToken ct)
     {
