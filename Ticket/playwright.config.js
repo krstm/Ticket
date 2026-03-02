@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const port = process.env.PLAYWRIGHT_PORT ?? '5178';
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${port}`;
+const defaultHost = process.env.PLAYWRIGHT_HOST ?? '127.0.0.1';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://${defaultHost}:${port}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -23,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `dotnet run --no-build --configuration Release --urls ${baseURL}`,
+    command: `dotnet run --configuration Release --urls ${baseURL}`,
     cwd: '.',
     env: {
       ASPNETCORE_ENVIRONMENT: 'Playwright',

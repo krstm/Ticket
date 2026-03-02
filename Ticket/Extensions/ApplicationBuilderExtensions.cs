@@ -8,7 +8,9 @@ public static class ApplicationBuilderExtensions
 {
     public static WebApplication ConfigureRequestPipeline(this WebApplication app)
     {
-        if (!app.Environment.IsDevelopment())
+        var isPlaywrightEnv = app.Environment.IsEnvironment("Playwright");
+
+        if (!app.Environment.IsDevelopment() && !isPlaywrightEnv)
         {
             app.UseExceptionHandler("/Home/Error");
             app.UseHsts();
@@ -19,7 +21,10 @@ public static class ApplicationBuilderExtensions
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         app.UseMiddleware<ContentSecurityPolicyMiddleware>();
 
-        app.UseHttpsRedirection();
+        if (!isPlaywrightEnv)
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseStaticFiles();
 
         app.UseRouting();
