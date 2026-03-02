@@ -25,7 +25,20 @@ public static class ApplicationBuilderExtensions
         {
             app.UseHttpsRedirection();
         }
-        app.UseStaticFiles();
+        
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                ctx.Context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+                ctx.Context.Response.Headers.Append("X-Frame-Options", "SAMEORIGIN");
+                ctx.Context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+                ctx.Context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
+                ctx.Context.Response.Headers.Append("Cross-Origin-Embedder-Policy", "require-corp");
+                ctx.Context.Response.Headers.Append("Cross-Origin-Opener-Policy", "same-origin");
+                ctx.Context.Response.Headers.Append("Cross-Origin-Resource-Policy", "same-origin");
+            }
+        });
 
         app.UseRouting();
         app.UseRateLimiter();
