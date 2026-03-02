@@ -16,6 +16,9 @@ export default defineConfig({
         sourcemap: false,
         outDir: 'wwwroot/dist',
         emptyOutDir: true,
+        esbuild: {
+            legalComments: 'none',
+        },
         lib: {
             entry: path.resolve(__dirname, 'Frontend/src/main.js'),
             name: 'TicketFrontend',

@@ -121,7 +121,7 @@ jobs:
       with:
         target: 'http://127.0.0.1:5080/'
         cmd_options: '-m 2'
-        artifact_name: zap-report
+        artifact_name: zapreport
         allow_issue_writing: false
 
     - name: Stop Application
