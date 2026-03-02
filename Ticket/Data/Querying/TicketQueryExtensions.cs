@@ -15,19 +15,22 @@ public static class TicketQueryExtensions
         {
             var normalized = SearchNormalizer.NormalizeRequired(parameters.SearchTerm);
             var like = $"%{normalized}%";
-            System.Linq.Expressions.Expression<Func<TicketEntity, bool>> titlePredicate = t => EF.Functions.Like(t.TitleNormalized, like);
             
-            System.Linq.Expressions.Expression<Func<TicketEntity, bool>> fullPredicate = t =>
-                EF.Functions.Like(t.TitleNormalized, like) ||
-                EF.Functions.Like(t.DescriptionNormalized, like) ||
-                (t.RequesterNameNormalized != null && EF.Functions.Like(t.RequesterNameNormalized, like)) ||
-                (t.RequesterEmailNormalized != null && EF.Functions.Like(t.RequesterEmailNormalized, like)) ||
-                (t.RecipientNameNormalized != null && EF.Functions.Like(t.RecipientNameNormalized, like)) ||
-                (t.RecipientEmailNormalized != null && EF.Functions.Like(t.RecipientEmailNormalized, like)) ||
-                (t.ReferenceCodeNormalized != null && EF.Functions.Like(t.ReferenceCodeNormalized, like));
-
-            var predicate = parameters.SearchScope == TicketSearchScope.TitleOnly ? titlePredicate : fullPredicate;
-            query = query.Where(predicate);
+            if (parameters.SearchScope == TicketSearchScope.TitleOnly)
+            {
+                query = query.Where(t => EF.Functions.Like(t.TitleNormalized, like));
+            }
+            else
+            {
+                query = query.Where(t =>
+                    EF.Functions.Like(t.TitleNormalized, like) ||
+                    EF.Functions.Like(t.DescriptionNormalized, like) ||
+                    (t.RequesterNameNormalized != null && EF.Functions.Like(t.RequesterNameNormalized, like)) ||
+                    (t.RequesterEmailNormalized != null && EF.Functions.Like(t.RequesterEmailNormalized, like)) ||
+                    (t.RecipientNameNormalized != null && EF.Functions.Like(t.RecipientNameNormalized, like)) ||
+                    (t.RecipientEmailNormalized != null && EF.Functions.Like(t.RecipientEmailNormalized, like)) ||
+                    (t.ReferenceCodeNormalized != null && EF.Functions.Like(t.ReferenceCodeNormalized, like)));
+            }
         }
 
         if (parameters.CategoryIds?.Count > 0)
