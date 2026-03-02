@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Ticket.Configuration;
 using Ticket.Data;
 using Ticket.Filters;
@@ -23,8 +24,15 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<RateLimitingOptions>(configuration.GetSection(RateLimitingOptions.SectionName));
-        services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
+        services.AddOptions<RateLimitingOptions>()
+            .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
+            .Validate(options => new RateLimitingOptionsValidator().Validate(options).IsValid, "Invalid rate limiting options.")
+            .ValidateOnStart();
+
+        services.AddOptions<NotificationOptions>()
+            .Bind(configuration.GetSection(NotificationOptions.SectionName))
+            .Validate(options => new NotificationOptionsValidator().Validate(options).IsValid, "Invalid notification options.")
+            .ValidateOnStart();
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {

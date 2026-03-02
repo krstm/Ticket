@@ -56,5 +56,5 @@ jobs:
         npm run test:e2e -- --reporter=line
 
     # 5. Domain & Security Unit/Integration Tests
-    - name: Test
-      run: dotnet test Ticket.sln --no-build --verbosity normal --configuration Release
+    - name: Test with Coverage
+      run: dotnet test Ticket.sln --no-build --verbosity normal --configuration Release --collect:"XPlat Code Coverage"

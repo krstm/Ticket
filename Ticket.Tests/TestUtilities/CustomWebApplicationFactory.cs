@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Ticket.Configuration;
 using Ticket.Data;
+using Ticket.Interfaces.Infrastructure;
 using Ticket.Interfaces.Services;
 
 namespace Ticket.Tests.TestUtilities;
@@ -16,17 +17,23 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"TicketTests-{Guid.NewGuid()}";
     private readonly int _rateLimit;
+    private readonly Action<IServiceCollection>? _configureServices;
+    private readonly FakeClock _clock = new();
 
     public CustomWebApplicationFactory() : this(1000)
     {
     }
 
-    private CustomWebApplicationFactory(int rateLimit)
+    private CustomWebApplicationFactory(int rateLimit, Action<IServiceCollection>? configureServices = null)
     {
         _rateLimit = rateLimit;
+        _configureServices = configureServices;
     }
 
-    public static CustomWebApplicationFactory Create(int rateLimit) => new(rateLimit);
+    public static CustomWebApplicationFactory Create(int rateLimit, Action<IServiceCollection>? configure = null) =>
+        new(rateLimit, configure);
+
+    public FakeClock Clock => _clock;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -63,6 +70,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddSingleton<TestNotificationService>();
             services.AddSingleton<INotificationService>(sp => sp.GetRequiredService<TestNotificationService>());
+            services.AddSingleton<IClock>(_ => _clock);
+            services.AddSingleton(_clock);
+
+            _configureServices?.Invoke(services);
 
             var sp = services.BuildServiceProvider();
             using var scope = sp.CreateScope();
@@ -77,7 +88,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.EnsureDeletedAsync();
         await db.Database.EnsureCreatedAsync();
+
         var notifications = scope.ServiceProvider.GetRequiredService<TestNotificationService>();
         notifications.Reset();
+        _clock.Set(DateTimeOffset.Parse("2024-01-01T00:00:00Z"));
     }
 }

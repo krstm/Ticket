@@ -7,15 +7,10 @@ using Ticket.DTOs.Responses;
 using Ticket.Domain.Enums;
 using Ticket.Tests.TestUtilities;
 
-namespace Ticket.Tests.Integration;
+namespace Ticket.Tests.Integration.Tickets;
 
 public class TicketApiTests : IntegrationTestBase
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     public TicketApiTests(CustomWebApplicationFactory factory) : base(factory)
     {
     }
@@ -523,6 +518,8 @@ public class TicketApiTests : IntegrationTestBase
             await EnsureSuccessAsync(firstCommentResponse);
         }
 
+        Clock.Advance(TimeSpan.FromSeconds(1));
+
         using (var secondCommentResponse = await Client.PostAsync($"/tickets/{ticket.Id}/comments", AsJson(new TicketCommentCreateRequest
         {
             Body = "second",
@@ -593,10 +590,4 @@ public class TicketApiTests : IntegrationTestBase
             ActorType = type
         };
 
-    private static async Task<T> DeserializeAsync<T>(HttpResponseMessage response)
-    {
-        await using var stream = await response.Content.ReadAsStreamAsync();
-        var result = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions);
-        return result!;
-    }
 }

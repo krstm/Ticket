@@ -40,6 +40,10 @@ Dependencies include Microsoft.AspNetCore.Mvc.Testing, Microsoft.EntityFramework
 - **IntegrationTestBase**
   - Creates a typed HttpClient with pplication/json accept headers.
   - Provides AsJson, EnsureSuccessAsync, and NotificationSpy helpers.
+- **Builder + clock helpers**
+  - `TicketBuilder`, `CategoryBuilder`, `DepartmentBuilder`, and `TicketActorBuilder` keep arrange blocks terse while still producing real DTOs/entities.
+  - `SeedCategoryAsync`, `SeedDepartmentAsync`, and `SeedTicketsAsync` hide the boilerplate HTTP calls so scenarios focus on assertions rather than setup.
+  - `FakeClock` is registered as the shared `IClock` implementation; tests advance it explicitly to verify ordering (history, comments, reports) without relying on wall-clock timing.
 - **Serialization**
   - Uses System.Text.Json with camelCase conventions, matching the API defaults.
 
@@ -50,18 +54,16 @@ Result: tests never hit real infrastructure, yet they exercise the full ASP.NET 
 ## 4. Suite Breakdown & Scenarios
 
 ### 4.1 Unit Tests (Ticket.Tests/Unit)
-- **Validators:** TicketQueryParametersValidatorTests now cover page-size bounds plus mutual exclusivity of PageToken and Page. Any future DTO (e.g., notification options) should receive similar coverage.
-- **Domain rules:** TicketStatusTransitionRulesTests verifies the allowed transition matrix.
-- **Future slots:** When pure logic helpers (e.g., normalization utilities) expand, add unit tests here to keep integration suites lean.
+- **Validators:** Dedicated suites exist for ticket create/update flows, query parameters, notification options, and rate limiting options. Each rule now has explicit sad-path coverage (over 40 parameterized cases) enforced via FluentAssertions.
+- **Domain + query helpers:** `TicketStatusTransitionRulesTests` enumerates the full status matrix (36 combinations) and `TicketSearchScopeTests` runs EF-backed filters to prove TitleOnly vs FullContent behaviour along with department/recipient filters.
+- **Service helpers & mapping:** `TicketMutationHelperTests`, `TicketDomainEventFactoryTests`, and `MappingExtensionsTests` guard sanitization, normalization, domain-event payloads, and DTO ordering logic so regressions are caught before integration runs.
 
-### 4.2 Integration Tests (Ticket.Tests/Integration/TicketApiTests)
-Key scenarios:
-1. **Ticket lifecycle:** Create â†’ update â†’ multi-step status transitions â†’ search filtering. Asserts sanitized descriptions, row-version enforcement, and final filtered result.
-2. **Concurrency:** PUT with stale If-Match returns 409.
-3. **Reporting:** /reports/summary grouping by category.
-4. **Keyset pagination:** Requests with PageToken return stable slices, no duplicates, and opaque tokens.
-5. **Search scope:** SearchScope=TitleOnly ignores description matches; FullContent finds them.
-6. **Domain events:** After creation/resolution, history rows exist and notification spies capture eventsâ€”proving MediatR handlers ran instead of services mutating history directly.
+### 4.2 Integration Tests (Ticket.Tests/Integration)
+- **TicketApiTests:** End-to-end lifecycle (create → update → status transitions), concurrency (If-Match 409), and actor enforcement continue to live here.
+- **TicketKeysetPaginationTests:** Exercises opaque page tokens, duplicate prevention, and server-side status filters while driving the HTTP pipeline.
+- **TicketCommentsIntegrationTests:** Verifies sanitized comment posting, ordering guarantees (using FakeClock), and notification spy hooks.
+- **Departments/Category suites:** CRUD coverage for `/departments` and `/categories`, including inactive filters, membership toggles, and category deactivation guards when tickets exist.
+- **Reports/ReportingApiTests:** Summary plus trend endpoints now run against seeded data with deterministic From/To windows so grouping/interval logic is kept honest.
 
 ### 4.3 Security/Hardening Tests (Ticket.Tests/Security)
 - XSS sanitization (persisted body differs from `<script>` payloads).
@@ -69,6 +71,7 @@ Key scenarios:
 - SQL-injection-like search term returns 200 instead of crashing.
 - Invalid PageToken yields HTTP 400 (ensures gatekeeping of keyset API).
 - Unauthorized actors attempting updates/comments receive 403 while participants succeed.
+- Mutation rate-limiter suite (`Security/RateLimiting/MutationRateLimitingTests`) hammers POST/GET endpoints with low permit windows to guarantee deterministic 429s across verbs.
 
 ---
 
@@ -91,8 +94,10 @@ dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Security.Secu
 
 No external services (SMTP, queues, SQL Server) are required; everything spins up inside the xUnit host.
 
+CI mirrors the same command and now runs `dotnet test Ticket.sln --collect:"XPlat Code Coverage"` so coverage artifacts are uploaded on every push/PR (target ≥80% for backend assemblies).
+
 ### 5.1 Latest Execution Log
-- 2026-03-02 04:39 UTC+3 — `dotnet test Ticket.sln` ✅ 25 tests, nullable warnings only.
+- 2026-03-02 19:32 UTC+3 — `dotnet test Ticket.sln` ✅ 136 tests (FluentAssertions-powered suites, coverage collector enabled).
 - 2026-03-02 04:36 UTC+3 — `cmd /c "cd Ticket && npm run test:e2e"` ✅ Playwright security suite (3 tests) all green against the Playwright profile (`ASPNETCORE_ENVIRONMENT=Playwright`).
 - 2026-03-02 04:34 UTC+3 — `cmd /c "cd Ticket && npm run build"` ✅ Vite emitted `wwwroot/dist/main.iife.js` + `main.css` (fonts reported as runtime-resolved because they stay under `/fonts/inter`).
 - 2026-03-02 04:33 UTC+3 — `cmd /c "cd Ticket && npm run lint"` ✅ ESLint (JS recommended rules) with zero warnings.

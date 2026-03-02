@@ -105,14 +105,14 @@ public class CategoryService : ICategoryService
 
     private async Task EnsureUniqueName(string name, int? excludeId, CancellationToken ct)
     {
-        var normalized = name.Trim().ToUpperInvariant();
-        var query = _context.Categories.Where(c => c.Name.ToUpper() == normalized);
-        if (excludeId.HasValue)
-        {
-            query = query.Where(c => c.Id != excludeId.Value);
-        }
+        var normalized = name.Trim();
+        var names = await _context.Categories
+            .AsNoTracking()
+            .Where(c => !excludeId.HasValue || c.Id != excludeId.Value)
+            .Select(c => c.Name)
+            .ToListAsync(ct);
 
-        if (await query.AnyAsync(ct))
+        if (names.Any(existing => string.Equals(existing?.Trim(), normalized, StringComparison.OrdinalIgnoreCase)))
         {
             throw new BadRequestException($"Category name '{name}' already exists.");
         }
