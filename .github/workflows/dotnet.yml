@@ -17,38 +17,38 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 22 # Projemizde kullandığımız sürüm
+        node-version: 22
 
-    # 2. Frontend Bağımlılıkları ve Build (main.css ve main.iife.js üretimi)
+    # 2. Frontend Build
     - name: Install NPM dependencies & Build Frontend
-      working-directory: ./Ticket # package.json'ın olduğu dizin
+      working-directory: ./Ticket
       run: |
         npm ci
         npm run lint
         npm run check:audit
         npm run build
 
-    # 3. .NET Kurulumu
+    # 3. .NET Build
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
 
-    - name: Run Playwright security smoke suite
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    # 4. Playwright Security Smoke Tests
+    - name: Run Playwright tests
       working-directory: ./Ticket
+      env:
+        ASPNETCORE_ENVIRONMENT: Playwright
       run: |
         npx playwright install --with-deps chromium
         npm run test:e2e -- --reporter=line
 
-    # 4. .NET Bağımlılıklarını Geri Yükleme
-    - name: Restore dependencies
-      run: dotnet restore
-
-    # 5. Build (Frontend dosyaları artık wwwroot içinde mevcut)
-    - name: Build
-      run: dotnet build --no-restore --configuration Release
-
-    # 6. Testler (Veritabanı bağımlılığı olmayan testler bu aşamada koşar)
+    # 5. Domain & Security Unit/Integration Tests
     - name: Test
       run: dotnet test --no-build --verbosity normal --configuration Release
-

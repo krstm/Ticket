@@ -23,12 +23,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `dotnet run --urls ${baseURL}`,
+    command: `dotnet run --configuration Release --urls ${baseURL}`,
     cwd: '.',
     env: {
       ASPNETCORE_ENVIRONMENT: 'Playwright',
     },
     timeout: 120000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
   },
 });

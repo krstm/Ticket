@@ -72,33 +72,27 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "Ops");
         var department = await CreateDepartmentAsync(client, "OpsDept", "ops@example.com");
 
-        var requests = Enumerable.Range(0, 5)
-            .Select(i => PostTicketAsync(client, new TicketCreateRequest
+        var tasks = Enumerable.Range(0, 5)
+            .Select(async i =>
             {
-                Title = $"Req {i}",
-                Description = "body",
-                CategoryId = category.Id,
-                DepartmentId = department.Id,
-                Requester = new()
+                using var response = await PostTicketAsync(client, new TicketCreateRequest
                 {
-                    Name = $"Requester {i}",
-                    Email = $"req{i}@example.com"
-                }
-            }))
+                    Title = $"Req {i}",
+                    Description = "body",
+                    CategoryId = category.Id,
+                    DepartmentId = department.Id,
+                    Requester = new()
+                    {
+                        Name = $"Requester {i}",
+                        Email = $"req{i}@example.com"
+                    }
+                });
+                return response.StatusCode;
+            })
             .ToArray();
 
-        var responses = await Task.WhenAll(requests);
-        try
-        {
-            Assert.Contains(responses, r => r.StatusCode == HttpStatusCode.TooManyRequests);
-        }
-        finally
-        {
-            foreach (var response in responses)
-            {
-                response.Dispose();
-            }
-        }
+        var statusCodes = await Task.WhenAll(tasks);
+        Assert.Contains(statusCodes, s => s == HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
