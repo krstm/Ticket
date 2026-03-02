@@ -49,6 +49,8 @@ jobs:
         ASPNETCORE_ENVIRONMENT: Playwright
         PLAYWRIGHT_HOST: 127.0.0.1
         PLAYWRIGHT_PORT: 5178
+        PLAYWRIGHT_BASE_URL: http://127.0.0.1:5178
+        Database__Provider: InMemory
       run: |
         npx playwright install --with-deps chromium
         npm run test:e2e -- --reporter=line

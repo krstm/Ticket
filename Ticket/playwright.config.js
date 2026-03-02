@@ -28,9 +28,10 @@ export default defineConfig({
     cwd: '.',
     env: {
       ASPNETCORE_ENVIRONMENT: 'Playwright',
+      'Database:Provider': 'InMemory',
     },
-    timeout: 120000,
-    reuseExistingServer: false,
+    timeout: 300000,
+    reuseExistingServer: !process.env.CI,
     url: baseURL,
   },
 });
