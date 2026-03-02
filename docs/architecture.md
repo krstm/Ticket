@@ -34,8 +34,8 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 | Extensions/ | DI + pipeline wiring (ServiceCollectionExtensions, ApplicationBuilderExtensions). |
 | Middleware/, Filters/, ModelBinding/ | Correlation IDs, RFC-7807 exception handling, model trimming, validation filter. |
 | Services/Mapping/ | Explicit mapper extensions that convert entities/value objects to DTOs without AutoMapper. |
-| Views/ | Razor pages powering the timeline, modern ticket list/detail forms, categories UI, and the analytics dashboard. |
-| Frontend/ | Tailwind/Alpine/Vite source (JS entry under `Frontend/src/main.js`, shared styles, and component helpers). Treat this as the design-system workspace. |
+| Views/ | Razor pages powering the timeline, modern ticket list/detail forms, categories UI, and the analytics dashboard. All fonts/scripts/styles must stay first-party—CDN snippets (Google Fonts, Chart.js, etc.) are prohibited without explicit approval. |
+| Frontend/ | Tailwind/Alpine/Vite source (JS entry under `Frontend/src/main.js`, shared styles, DOMPurify helpers, `ticketActorContext`, and Chart.js bootstrap logic). Treat this as the design-system workspace. |
 | package.json / vite.config.js / tailwind.config.js | NPM manifest + build tooling. `npm run build` emits `wwwroot/dist/main.iife.js` + `main.css`, which `_Layout.cshtml` references. |
 | wwwroot/ | Static output (Vite bundle in `dist/` plus legacy assets). |
 | docs/ | This architecture guide plus testing.md (single source of truth for new contributors/LLMs). |
@@ -127,13 +127,13 @@ This guide is intentionally exhaustive so a future engineer (or another LLM with
 ## 7. Security & Hardening
 
 1. **Input validation:** FluentValidation enforces lengths, enums, pagination limits, and date ordering. Validators explicitly forbid using PageToken with page > 1.
-2. **Sanitization:** HtmlContentSanitizer strips scripts/event attributes. Tests assert persisted data differs from raw XSS input.
+2. **Sanitization (server + client):** HtmlContentSanitizer strips scripts/event attributes, while DOMPurify (`sanitizeInput`) runs inside Alpine flows before every mutation. xUnit + Playwright tests assert persisted data differs from raw XSS input.
 3. **Rate limiting:** Global fixed window (default 100 req/min) plus a "mutations" policy applied to POST/PUT/PATCH/DELETE. Integration tests tighten the window to force deterministic 429s. This relies on the built-in ASP.NET Core rate-limiting middleware so no extra NuGet package is required.
 4. **Centralized errors:** RFC-7807 responses include correlation IDs, hide stack traces outside Development, and map known exception types (BadRequestException, ConflictException, NotFoundException).
-5. **Identity readiness:** No temporary API keys or client-side hacks are in use. Instead, controllers accept unauthenticated traffic today while services, validators, and domain events already expose the seams (`TicketActorContext`, notification hooks) where a proper identity provider will plug in later.
-6. **Transport + headers:** HTTPS redirection, HSTS (non-development), and space for future CSP/XFO headers.
-7. **Guardrails proven by tests:** Security suite covers XSS sanitization, rate limiting, SQL-injection-style filters, invalid page tokens, and department-only mutations via actor contexts.
-8. **Release checklist:** Before every deployment run `dotnet list Ticket/Ticket.csproj package --vulnerable`, `npm audit --json`, and the `rg` sweeps listed in docs/testing.md §9. Capture the outputs in release notes; deployments block on any non-empty vulnerability report.
+5. **Identity readiness & actor context:** Controllers accept unauthenticated traffic today, but `TicketActorContext` travels with every change. The shared Alpine store (`ticketActorContext`) plus backend evaluators enforce requester/department-only operations until a proper identity provider plugs in.
+6. **Transport + headers:** HTTPS redirection, HSTS (non-development), and `ContentSecurityPolicyMiddleware` emits `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'`. The policy only works because all fonts/scripts/styles are self-hosted.
+7. **Guardrails proven by tests:** xUnit security suite covers sanitization, rate limiting, SQL-injection-style filters, invalid page tokens, and department-only mutations. Playwright smoke tests confirm no third-party network calls and DOM sanitization, while GitHub Actions `security.yml` runs CodeQL plus an OWASP ZAP Baseline scan against `/ui` pages.
+8. **Release checklist:** Before every deployment run `dotnet list Ticket/Ticket.csproj package --vulnerable`, `npm run check:audit`, `npm run lint`, `npm run test:e2e`, `dotnet test`, and the `rg` sweeps listed in docs/testing.md section 9. Capture the outputs in release notes; deployments block on any non-empty vulnerability report.
 
 ---
 

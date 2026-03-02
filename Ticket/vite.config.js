@@ -6,7 +6,14 @@ export default defineConfig({
     plugins: [
         tailwindcss(),
     ],
+    cssDevSourcemap: false,
+    define: {
+        'process.env.NODE_ENV': '"production"',
+    },
     build: {
+        target: 'es2019',
+        cssTarget: 'es2019',
+        sourcemap: false,
         outDir: 'wwwroot/dist',
         emptyOutDir: true,
         lib: {

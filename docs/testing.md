@@ -92,8 +92,10 @@ dotnet test Ticket.Tests/Ticket.Tests.csproj --filter Ticket.Tests.Security.Secu
 No external services (SMTP, queues, SQL Server) are required; everything spins up inside the xUnit host.
 
 ### 5.1 Latest Execution Log
-- 2026-03-02 02:35 UTC+3 — `dotnet test Ticket.sln` (Passed, 25 tests, warnings only for nullable analysis).
-- 2026-03-02 02:33 UTC+3 — `cmd /c "cd Ticket && npm run build"` (Vite 7/Tailwind 4 bundle emitted `wwwroot/dist/main.iife.js` + `main.css` without warnings).
+- 2026-03-02 04:39 UTC+3 — `dotnet test Ticket.sln` ✅ 25 tests, nullable warnings only.
+- 2026-03-02 04:36 UTC+3 — `cmd /c "cd Ticket && npm run test:e2e"` ✅ Playwright security suite (3 tests) all green against the Playwright profile (`ASPNETCORE_ENVIRONMENT=Playwright`).
+- 2026-03-02 04:34 UTC+3 — `cmd /c "cd Ticket && npm run build"` ✅ Vite emitted `wwwroot/dist/main.iife.js` + `main.css` (fonts reported as runtime-resolved because they stay under `/fonts/inter`).
+- 2026-03-02 04:33 UTC+3 — `cmd /c "cd Ticket && npm run lint"` ✅ ESLint (JS recommended rules) with zero warnings.
 
 ---
 
@@ -121,6 +123,34 @@ By following this playbook, every capability (especially edge cases) remains tes
 - Run `npm install` once per clone; afterwards `npm run dev` (or `npm run build`) ensures Vite/Tailwind regenerate `wwwroot/dist`.
 - Razor UI smoke-tests piggyback on the integration suite because the controllers/views render real HTML. Before shipping major UI tweaks, run `npm run build` and `dotnet test` to guarantee the bundle + backend both compile.
 - `npm audit` currently reports zero issues (Mar 2, 2026). We still plan the Vite 7/Tailwind 4/Node 22 migration to stay ahead of advisories even when the report is clean.
+
+### 8.1 Frontend Security Baseline — 2026-03-02 04:40 +03
+- `cmd /c "cd Ticket && npm audit --production"` → **0 vulnerabilities** (prod + dev). `npm run check:audit` wraps the same command with `--audit-level=high` and already runs on every PR/push.
+- `cmd /c "cd Ticket && npm outdated"` → **no output**, confirming all pinned versions are current after the dependency cleanup (lucide removed, Chart.js/DOMPurify/Playwright/ESLint pinned).
+- `cmd /c "cd Ticket && npm ls --depth=0"` → dependency snapshot:
+
+```text
+ticket-frontend@1.0.0
+├── @eslint/js@10.0.1
+├── @playwright/test@1.58.2
+├── @tailwindcss/cli@4.2.1
+├── @tailwindcss/forms@0.5.11
+├── @tailwindcss/postcss@4.2.1
+├── @tailwindcss/typography@0.5.19
+├── @tailwindcss/vite@4.2.1
+├── alpinejs@3.15.8
+├── chart.js@4.5.1
+├── dompurify@3.3.1
+├── eslint@10.0.2
+├── tailwindcss@4.2.1
+└── vite@7.3.1
+```
+
+- `cmd /c "cd Ticket && rg -n "http" Views Frontend/src wwwroot"` → now only documentation strings remain (`wwwroot/js/site.js` + `_Layout.cshtml.css` scaffolding comments, Tailwind metadata inside `wwwroot/dist/main.css`). Razor views no longer reference third-party hosts; fonts + Chart.js are self-hosted, which keeps the CSP strict (`default-src 'self'`).
+- Cadence: before any release run `npm run lint`, `npm run check:audit`, `npm run build`, `npm run test:e2e`, and `dotnet test`. Monthly, review `npm outdated` even if it stays empty so we can log drift.
+- CI gate: `.github/workflows/dotnet.yml` + `security.yml` execute the same commands plus CodeQL + OWASP ZAP Baseline, so regressions fail fast.
+
+
 ### 4.4 Department & Comment Flows
 - Integration tests now cover department filtering (DepartmentFilters_ShouldLimitSearchResults), permissions (DepartmentMember_EditPermissions_ShouldBeEnforced), and the public /tickets/{id}/comments APIs.
 - Security suite includes adversarial assertions: outsiders attempting updates/comments receive 403s, scripted comments are sanitized, and rate limiting still works after the department bootstrap stage.
@@ -137,6 +167,14 @@ By following this playbook, every capability (especially edge cases) remains tes
 | 2026-03-02 02:34 | `cmd /c "cd Ticket && npm audit --json"` | 0 vulnerabilities (prod 5, dev 129 deps). | Attach the JSON blob to CI artifacts for traceability. |
 | 2026-03-02 02:35 | `rg -n -i "eval\(|CodeDom|ProcessStart"` | Matches limited to vendor JS (jquery*, validation bundles). | Reviewed and accepted; no project code uses `eval`/CodeDom/Process spawning. |
 | 2026-03-02 02:35 | `rg -n "TODO|HACK|FIXME"` | Hits only inside vendor bundles. | No latent TODOs inside our code path. |
+| 2026-03-02 04:32 | `cmd /c "cd Ticket && npm audit --production"` | **0 vulnerabilities** | Mirrors `npm run check:audit`; attach JSON if it ever reports anything. |
+| 2026-03-02 04:33 | `cmd /c "cd Ticket && npm outdated"` | *(no output)* | Confirms all pinned frontend dependencies are current. |
+| 2026-03-02 04:33 | `cmd /c "cd Ticket && npm ls --depth=0"` | Snapshot recorded above. | Use as reference when auditing diffing lockfiles. |
+| 2026-03-02 04:33 | `cmd /c "cd Ticket && npm run lint"` | ESLint clean (0 warnings). | Blocks CI if any JS rule regresses. |
+| 2026-03-02 04:34 | `cmd /c "cd Ticket && npm run build"` | Vite build succeeded. | Emits `wwwroot/dist/main.*`; rerun whenever CSS/JS changes. |
+| 2026-03-02 04:36 | `cmd /c "cd Ticket && npm run test:e2e"` | Playwright suite passed (3 tests). | Verifies no third-party requests + sanitized rendering + actor guard. |
+| 2026-03-02 04:39 | `dotnet test Ticket.sln` | 25 tests passed. | Includes new SecurityHardening tests for sanitization + actor enforcement. |
+| 2026-03-02 04:40 | `cmd /c "cd Ticket && rg -n \"http\" Views Frontend/src wwwroot"` | Only documentation references remain. | Confirms CDN removal before CSP activation. |
 
 **Manual spot checks (2026-03-02 02:36 UTC+3):**
 - `TicketService`, `TicketHistoryHandler`, `NotificationDispatcherHandler`, and all controllers were reviewed for unchecked string concatenation or unsanitized user input. All paths continue to flow through FluentValidation, HtmlContentSanitizer, normalization helpers, and EF parameterization (no raw SQL/string concatenation).
@@ -147,3 +185,13 @@ By following this playbook, every capability (especially edge cases) remains tes
 2. Run `dotnet list ... --outdated` to capture pending dependency bumps (attach the output to the release notes even if we defer upgrades).
 3. Optional but recommended: `dotnet format analyzers --verify-no-changes` and `trufflehog filesystem --since HEAD~50` if those tools are available. Document results in this table.
 4. Run the `rg` sweeps above. Any hits outside `wwwroot/lib` require remediation or an explicit risk acceptance in this document.
+
+---
+
+## 10. Frontend Security Checklist
+1. **Dependency + build gate:** Run `npm run lint`, `npm run check:audit`, `npm run build`, `npm run test:e2e`, and `dotnet test` locally before opening a PR; CI enforces the same set plus CodeQL + OWASP ZAP Baseline.
+2. **No third-party hosts:** `cmd /c "cd Ticket && rg -n \"http\" Views Frontend/src wwwroot"` must only hit documentation comments. If a new vendor is needed, document the risk, self-host it, and adjust the CSP before merging.
+3. **Fonts & charts stay local:** Inter variants live under `Ticket/wwwroot/fonts/inter/` and Chart.js ships via npm. Never reintroduce Google Fonts/CDNs; doing so would break the CSP.
+4. **CSP verification:** After publishing, `curl -I https://{host}/` should include `Content-Security-Policy: default-src 'self'; ...`. If you need to relax a directive, update `ContentSecurityPolicyMiddleware`, justify it in `docs/architecture.md`, and add regression tests.
+5. **Sanitization + actor context:** Frontend mutations must run `sanitizeInput` and `ticketActorContext.ensure()` before issuing `fetch`. The Playwright tests (`tests/e2e/security.spec.js`) plus `SecurityHardeningTests` in xUnit will fail if this contract regresses.
+6. **Monitoring:** Review ZAP Baseline artifacts produced by `.github/workflows/security.yml` and log any Medium/High findings here. Treat missed reports as a release blocker.

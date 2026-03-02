@@ -17,6 +17,7 @@ public static class ApplicationBuilderExtensions
         app.UseSerilogRequestLogging();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseMiddleware<ExceptionHandlingMiddleware>();
+        app.UseMiddleware<ContentSecurityPolicyMiddleware>();
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();

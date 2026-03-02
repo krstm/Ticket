@@ -38,6 +38,8 @@ jobs:
       working-directory: ./Ticket
       run: |
         npm ci
+        npm run lint
+        npm run check:audit
         npm run build
 
     # 3. .NET Build (CodeQL izleyicisi aktifken derleme yapılmalı)
@@ -53,3 +55,50 @@ jobs:
     # 4. CodeQL Analizi
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
+
+  zap-baseline:
+    name: OWASP ZAP Baseline
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build Frontend
+      working-directory: ./Ticket
+      run: |
+        npm ci
+        npm run build
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Start Application
+      working-directory: ./Ticket
+      env:
+        ASPNETCORE_ENVIRONMENT: Playwright
+      run: |
+        dotnet run --configuration Release --urls http://127.0.0.1:5080 &
+        echo $! > zap-app.pid
+        sleep 10
+
+    - name: Run ZAP Baseline Scan
+      uses: zaproxy/action-baseline@v0.11.0
+      with:
+        target: 'http://127.0.0.1:5080/ui'
+        cmd: '-m 2'
+        report_html: true
+        artifact_name: zap-baseline-report
+        allow_issue_writing: false
+
+    - name: Stop Application
+      if: always()
+      run: |
+        if [ -f Ticket/zap-app.pid ]; then
+          kill $(cat Ticket/zap-app.pid) || true
+        fi

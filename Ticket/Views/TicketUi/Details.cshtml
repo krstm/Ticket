@@ -45,7 +45,7 @@
             <!-- Description Card -->
             <div class="card p-8">
                 <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Description</h3>
-                <div class="prose prose-slate max-w-none text-slate-800 leading-relaxed">
+                <div class="prose prose-slate max-w-none text-slate-800 leading-relaxed" data-testid="ticket-description">
                     @Html.Raw(Model.Description.Replace("\n", "<br/>"))
                 </div>
             </div>
@@ -115,7 +115,7 @@
                                     <div class="font-semibold text-slate-800">@comment.AuthorDisplayName (@comment.Source)</div>
                                     <time>@comment.CreatedAtUtc.ToLocalTime().ToString("g")</time>
                                 </div>
-                                <p class="mt-2 text-sm text-slate-700">@comment.Body</p>
+                                <p class="mt-2 text-sm text-slate-700" data-testid="ticket-comment-body">@comment.Body</p>
                             </div>
                         }
                     }
@@ -230,6 +230,7 @@
     <!-- Status Update Modal (Alpine.js) -->
     <div x-show="showStatusModal" 
          class="fixed inset-0 z-[100] overflow-y-auto" 
+         data-testid="status-modal"
          style="display: none;">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div x-show="showStatusModal" 

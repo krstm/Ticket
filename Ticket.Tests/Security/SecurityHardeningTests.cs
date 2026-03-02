@@ -44,6 +44,24 @@ public class SecurityHardeningTests
 
         Assert.DoesNotContain("<script>", ticket.Description, StringComparison.OrdinalIgnoreCase);
         Assert.NotEqual("<script>alert('boom')</script> body", ticket.Description, StringComparer.OrdinalIgnoreCase);
+
+        using var encodedResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
+        {
+            Title = "Rich text",
+            Description = "<b>bold</b>",
+            CategoryId = category.Id,
+            DepartmentId = department.Id,
+            Priority = TicketPriority.Medium,
+            Requester = new()
+            {
+                Name = "Security User",
+                Email = "sec.user@example.com"
+            }
+        }));
+
+        encodedResponse.EnsureSuccessStatusCode();
+        var encodedTicket = await DeserializeAsync<TicketDetailsDto>(encodedResponse);
+        Assert.Contains("&lt;b&gt;bold&lt;/b&gt;", encodedTicket.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -205,6 +223,20 @@ public class SecurityHardeningTests
         commentResponse.EnsureSuccessStatusCode();
         var comment = await DeserializeAsync<TicketCommentDto>(commentResponse);
         Assert.DoesNotContain("<script>", comment.Body, StringComparison.OrdinalIgnoreCase);
+
+        using var richTextResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
+        {
+            Body = "<b>bold</b>",
+            Actor = new TicketActorContextDto
+            {
+                Name = "Dept Member",
+                Email = department.Members.First().Email,
+                ActorType = TicketActorType.DepartmentMember
+            }
+        }));
+        richTextResponse.EnsureSuccessStatusCode();
+        var encodedComment = await DeserializeAsync<TicketCommentDto>(richTextResponse);
+        Assert.Contains("&lt;b&gt;bold&lt;/b&gt;", encodedComment.Body, StringComparison.OrdinalIgnoreCase);
 
         using var outsiderResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
         {

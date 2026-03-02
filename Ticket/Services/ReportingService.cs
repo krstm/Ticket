@@ -63,9 +63,13 @@ public class ReportingService : IReportingService
         var (from, to) = NormalizeRange(query);
         var intervalSpan = query.Interval == ReportInterval.Day ? TimeSpan.FromDays(1) : TimeSpan.FromDays(7);
 
-        var buckets = await _context.Tickets.AsNoTracking()
+        var scopedTickets = await _context.Tickets.AsNoTracking()
             .Where(t => t.CreatedAtUtc >= from && t.CreatedAtUtc <= to)
             .Where(t => query.DepartmentIds == null || query.DepartmentIds.Count == 0 || query.DepartmentIds.Contains(t.DepartmentId))
+            .Select(t => new { t.CreatedAtUtc, t.Status })
+            .ToListAsync(ct);
+
+        var buckets = scopedTickets
             .Select(t => new
             {
                 PeriodStart = AlignToInterval(t.CreatedAtUtc, query.Interval),
@@ -81,7 +85,7 @@ public class ReportingService : IReportingService
             })
             .OrderBy(b => b.PeriodStartUtc)
             .ThenBy(b => b.Bucket)
-            .ToListAsync(ct);
+            .ToList();
 
         return buckets;
     }

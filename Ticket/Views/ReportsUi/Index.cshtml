@@ -1,7 +1,10 @@
 @model IReadOnlyCollection<Ticket.DTOs.Responses.ReportBucketDto>
+@using System.Text
 @{
     ViewData["Title"] = "Insights Dashboard";
     var trendData = ViewBag.TrendData as IReadOnlyCollection<Ticket.DTOs.Responses.ReportBucketDto> ?? Array.Empty<Ticket.DTOs.Responses.ReportBucketDto>();
+    var trendPayload = System.Convert.ToBase64String(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(trendData)));
+    var summaryPayload = System.Convert.ToBase64String(Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(Model)));
 }
 
 <div class="space-y-8">
@@ -37,7 +40,10 @@
     </div>
 
     <!-- Charts Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8"
+         data-reports-dashboard="true"
+         data-trend-b64="@trendPayload"
+         data-summary-b64="@summaryPayload">
         <!-- Trend Chart -->
         <div class="card p-8">
             <h3 class="text-sm font-bold text-slate-900 uppercase tracking-widest mb-6 flex items-center">
@@ -61,68 +67,3 @@
         </div>
     </div>
 </div>
-
-@section Scripts {
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Trend Chart
-            const trendCtx = document.getElementById('trendChart').getContext('2d');
-            const trendData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(trendData));
-            
-            new Chart(trendCtx, {
-                type: 'line',
-                data: {
-                    labels: trendData.map(b => b.Bucket),
-                    datasets: [{
-                        label: 'Requests',
-                        data: trendData.map(b => b.Count),
-                        borderColor: '#3b68f6',
-                        backgroundColor: 'rgba(59, 104, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#fff',
-                        pointBorderColor: '#3b68f6',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { borderDash: [5, 5] }, ticks: { font: { family: 'Inter' } } },
-                        x: { grid: { display: false }, ticks: { font: { family: 'Inter' } } }
-                    }
-                }
-            });
-
-            // Status Distribution Chart
-            const statusCtx = document.getElementById('statusChart').getContext('2d');
-            const summaryData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model));
-
-            new Chart(statusCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: summaryData.map(b => b.Bucket),
-                    datasets: [{
-                        data: summaryData.map(b => b.Count),
-                        backgroundColor: ['#3b68f6', '#10b981', '#f59e0b', '#64748b', '#ef4444'],
-                        borderWidth: 0,
-                        hoverOffset: 10
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '70%',
-                    plugins: {
-                        legend: { position: 'right', labels: { boxWidth: 10, padding: 20, font: { family: 'Inter', weight: 'bold' } } }
-                    }
-                }
-            });
-        });
-    </script>
-}

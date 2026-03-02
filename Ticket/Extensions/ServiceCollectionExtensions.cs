@@ -27,7 +27,17 @@ public static class ServiceCollectionExtensions
         services.Configure<NotificationOptions>(configuration.GetSection(NotificationOptions.SectionName));
 
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("TicketDb")));
+        {
+            var provider = configuration.GetValue<string>("Database:Provider");
+            if (string.Equals(provider, "InMemory", StringComparison.OrdinalIgnoreCase))
+            {
+                options.UseInMemoryDatabase("TicketDb");
+            }
+            else
+            {
+                options.UseSqlServer(configuration.GetConnectionString("TicketDb"));
+            }
+        });
 
         services.AddScoped<ITicketService, TicketService>();
         services.AddScoped<ICategoryService, CategoryService>();
