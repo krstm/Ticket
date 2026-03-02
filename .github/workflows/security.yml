@@ -5,9 +5,9 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch: # Manuel tetikleme özelliği
+  workflow_dispatch:
   schedule:
-    - cron: '30 0 * * 0' # Her pazar gece 00:30'da otomatik tarama
+    - cron: '30 0 * * 0'
 
 jobs:
   analyze:
@@ -16,26 +16,25 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write # write implies read for the API
+      security-events: write
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 1. CodeQL Başlatma (Derlemeden ÖNCE gelmek zorundadır)
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
       with:
         languages: 'csharp, javascript'
         queries: security-extended,security-and-quality
 
-    # 2. Frontend Build
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 22
         cache: 'npm'
         cache-dependency-path: Ticket/package-lock.json
+
     - name: Build Frontend
       working-directory: ./Ticket
       run: |
@@ -44,17 +43,16 @@ jobs:
         npm run check:audit
         npm run build
 
-    # 3. .NET Build (CodeQL izleyicisi aktifken derleme yapılmalı)
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
+
     - name: .NET Restore & Build
       run: |
         dotnet restore Ticket.sln
         dotnet build Ticket.sln --configuration Release --no-incremental --no-restore
 
-    # 4. CodeQL Analizi
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
 
@@ -125,5 +123,10 @@ jobs:
         cmd_options: '-m 2'
         artifact_name: zap-report
         allow_issue_writing: false
+
+    - name: Stop Application
+      if: always()
+      run: |
+        if [ -f Ticket/zap-app.pid ]; then
           kill $(cat Ticket/zap-app.pid) || true
         fi
