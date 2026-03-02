@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5178';
+// Use standard fixtures which inherit baseURL from config
 
 const createCategory = async (api, name) => {
   const response = await api.post('/categories', { data: { name } });
@@ -68,12 +68,13 @@ const departmentActor = (email) => ({
   actorType: 1,
 });
 
-test('reports dashboard should avoid third-party requests', async ({ page }) => {
+test('reports dashboard should avoid third-party requests', async ({ page, baseURL }) => {
   const disallowed = [];
   await page.route('**/*', (route) => {
     const url = route.request().url();
-    const sameOrigin = url.startsWith(BASE_URL) || url.startsWith('data:') || url.startsWith('about:');
-    if (!sameOrigin) {
+    // Allow same-origin, data URIs, and about:blank
+    const isSameOrigin = url.startsWith(baseURL) || url.startsWith('data:') || url.startsWith('about:');
+    if (!isSameOrigin) {
       disallowed.push(url);
     }
     route.continue();
@@ -81,7 +82,7 @@ test('reports dashboard should avoid third-party requests', async ({ page }) => 
 
   await page.goto('/ui/reports');
   await expect(page.getByRole('heading', { name: 'System Insights' })).toBeVisible();
-  expect(disallowed).toEqual([]);
+  expect(disallowed, `Disallowed requests: ${disallowed.join(', ')}`).toEqual([]);
 });
 
 test('ticket details sanitize descriptions and comments', async ({ page, request }) => {
