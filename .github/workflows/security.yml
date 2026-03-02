@@ -34,6 +34,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
+        cache: 'npm'
     - name: Build Frontend
       working-directory: ./Ticket
       run: |
@@ -49,8 +50,8 @@ jobs:
         dotnet-version: 8.0.x
     - name: .NET Restore & Build
       run: |
-        dotnet restore
-        dotnet build --configuration Release --no-incremental
+        dotnet restore Ticket.sln
+        dotnet build Ticket.sln --configuration Release --no-incremental --no-restore
 
     # 4. CodeQL Analizi
     - name: Perform CodeQL Analysis
@@ -66,11 +67,14 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
+        cache: 'npm'
 
     - name: Build Frontend
       working-directory: ./Ticket
       run: |
         npm ci
+        npm run lint
+        npm run check:audit
         npm run build
 
     - name: Setup .NET
@@ -78,10 +82,17 @@ jobs:
       with:
         dotnet-version: 8.0.x
 
+    - name: Restore & Build backend
+      run: |
+        dotnet restore Ticket/Ticket.csproj
+        dotnet build Ticket/Ticket.csproj --configuration Release --no-restore
+
     - name: Start Application
       working-directory: ./Ticket
       env:
         ASPNETCORE_ENVIRONMENT: Playwright
+        PLAYWRIGHT_HOST: 127.0.0.1
+        PLAYWRIGHT_PORT: 5080
       run: |
         dotnet run --configuration Release --urls http://127.0.0.1:5080 &
         echo $! > zap-app.pid

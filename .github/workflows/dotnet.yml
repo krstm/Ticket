@@ -18,6 +18,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
+        cache: 'npm'
 
     # 2. Frontend Build
     - name: Install NPM dependencies & Build Frontend
@@ -35,20 +36,22 @@ jobs:
         dotnet-version: 8.0.x
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore Ticket.sln
 
     - name: Build
-      run: dotnet build --no-restore --configuration Release
+      run: dotnet build Ticket.sln --no-restore --configuration Release
 
     # 4. Playwright Security Smoke Tests
     - name: Run Playwright tests
       working-directory: ./Ticket
       env:
         ASPNETCORE_ENVIRONMENT: Playwright
+        PLAYWRIGHT_HOST: 127.0.0.1
+        PLAYWRIGHT_PORT: 5178
       run: |
         npx playwright install --with-deps chromium
         npm run test:e2e -- --reporter=line
 
     # 5. Domain & Security Unit/Integration Tests
     - name: Test
-      run: dotnet test --no-build --verbosity normal --configuration Release
+      run: dotnet test Ticket.sln --no-build --verbosity normal --configuration Release
