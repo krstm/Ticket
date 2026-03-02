@@ -167,8 +167,6 @@ public class TicketService : ITicketService
         ticket.Status = request.Status;
         ticket.UpdatedAtUtc = _clock.UtcNow;
 
-        var changedBy = string.IsNullOrWhiteSpace(request.ChangedBy) ? actor.DisplayName : request.ChangedBy.Trim();
-        var changedByEmail = actor.Email.Trim();
         var occurredAt = _clock.UtcNow;
         ticket.AddDomainEvent(TicketDomainEventFactory.StatusChanged(
             ticket,

@@ -28,7 +28,7 @@ public class TicketApiTests : IntegrationTestBase
         var requesterActor = BuildActor("Jane Doe", "jane@example.com", TicketActorType.Requester);
         var departmentActor = BuildActor("Ops Agent", department.Members.First().Email, TicketActorType.DepartmentMember);
 
-        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Email not working",
             Description = "<script>alert('x')</script> cannot send email",
@@ -62,16 +62,16 @@ public class TicketApiTests : IntegrationTestBase
             }
         };
 
-        var updateMessage = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
+        using var updateMessage = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
         {
             Content = AsJson(updateRequest)
         };
         updateMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(created.RowVersion));
-        var updateResponse = await Client.SendAsync(updateMessage);
+        using var updateResponse = await Client.SendAsync(updateMessage);
         await EnsureSuccessAsync(updateResponse);
         var updated = await DeserializeAsync<TicketDetailsDto>(updateResponse);
 
-        var progressMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        using var progressMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
         {
             Content = AsJson(new TicketStatusUpdateRequest
             {
@@ -81,11 +81,11 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         progressMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(updated.RowVersion));
-        var progressResponse = await Client.SendAsync(progressMessage);
+        using var progressResponse = await Client.SendAsync(progressMessage);
         await EnsureSuccessAsync(progressResponse);
         var progressed = await DeserializeAsync<TicketDetailsDto>(progressResponse);
 
-        var statusMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        using var statusMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
         {
             Content = AsJson(new TicketStatusUpdateRequest
             {
@@ -96,13 +96,13 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         statusMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(progressed.RowVersion));
-        var statusResponse = await Client.SendAsync(statusMessage);
+        using var statusResponse = await Client.SendAsync(statusMessage);
         await EnsureSuccessAsync(statusResponse);
 
         Assert.Single(NotificationSpy.ResolvedEvents);
         Assert.Contains("ops.agent@example.com", NotificationSpy.ResolvedEvents.Single().Recipients);
 
-        var listResponse = await Client.GetAsync("/tickets?Statuses=Resolved&SearchTerm=email");
+        using var listResponse = await Client.GetAsync("/tickets?Statuses=Resolved&SearchTerm=email");
         await EnsureSuccessAsync(listResponse);
         var list = await DeserializeAsync<PagedResult<TicketSummaryDto>>(listResponse);
 
@@ -117,7 +117,7 @@ public class TicketApiTests : IntegrationTestBase
         var category = await CreateCategoryAsync("Networking");
         var department = await CreateDepartmentAsync("NetOps", "netops@example.com");
         var actor = BuildActor("Requester", "req@example.com", TicketActorType.Requester);
-        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "VPN outage",
             Description = "vpn down",
@@ -132,7 +132,7 @@ public class TicketApiTests : IntegrationTestBase
         await EnsureSuccessAsync(createResponse);
         var created = await DeserializeAsync<TicketDetailsDto>(createResponse);
 
-        var request = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
         {
             Content = AsJson(new TicketUpdateRequest
             {
@@ -149,10 +149,10 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         request.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(created.RowVersion));
-        var response1 = await Client.SendAsync(request);
+        using var response1 = await Client.SendAsync(request);
         await EnsureSuccessAsync(response1);
 
-        var staleRequest = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
+        using var staleRequest = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{created.Id}")
         {
             Content = AsJson(new TicketUpdateRequest
             {
@@ -169,7 +169,7 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         staleRequest.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(created.RowVersion));
-        var staleResponse = await Client.SendAsync(staleRequest);
+        using var staleResponse = await Client.SendAsync(staleRequest);
 
         Assert.Equal(HttpStatusCode.Conflict, staleResponse.StatusCode);
     }
@@ -182,7 +182,7 @@ public class TicketApiTests : IntegrationTestBase
         var departmentA = await CreateDepartmentAsync("PeopleOps", "people@example.com");
         var departmentB = await CreateDepartmentAsync("FinOps", "fin@example.com");
 
-        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using (var formTicketResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Access form",
             Description = "Need form",
@@ -194,9 +194,12 @@ public class TicketApiTests : IntegrationTestBase
                 Name = "HR User",
                 Email = "hr@example.com"
             }
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(formTicketResponse);
+        }
 
-        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using (var budgetTicketResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Budget tool issue",
             Description = "Cannot open tool",
@@ -208,9 +211,12 @@ public class TicketApiTests : IntegrationTestBase
                 Name = "Finance User",
                 Email = "fin@example.com"
             }
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(budgetTicketResponse);
+        }
 
-        var response = await Client.GetAsync("/reports/summary?groupBy=department");
+        using var response = await Client.GetAsync("/reports/summary?groupBy=department");
         response.EnsureSuccessStatusCode();
         var summaries = await DeserializeAsync<List<ReportBucketDto>>(response);
 
@@ -225,7 +231,7 @@ public class TicketApiTests : IntegrationTestBase
         var department = await CreateDepartmentAsync("InfraOps", "infra@example.com");
         for (var i = 0; i < 5; i++)
         {
-            await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+            using var ticketResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
             {
                 Title = $"Batch {i}",
                 Description = "body",
@@ -237,16 +243,17 @@ public class TicketApiTests : IntegrationTestBase
                     Email = $"req{i}@example.com"
                 }
             }));
+            await EnsureSuccessAsync(ticketResponse);
         }
 
-        var firstPageResponse = await Client.GetAsync("/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt");
+        using var firstPageResponse = await Client.GetAsync("/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt");
         await EnsureSuccessAsync(firstPageResponse);
         var firstPage = await DeserializeAsync<PagedResult<TicketSummaryDto>>(firstPageResponse);
 
         Assert.Equal(2, firstPage.Items.Count);
         Assert.False(string.IsNullOrWhiteSpace(firstPage.NextPageToken));
 
-        var secondPageResponse = await Client.GetAsync($"/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt&PageToken={Uri.EscapeDataString(firstPage.NextPageToken!)}");
+        using var secondPageResponse = await Client.GetAsync($"/tickets?PageSize=2&SortDirection=Desc&SortBy=CreatedAt&PageToken={Uri.EscapeDataString(firstPage.NextPageToken!)}");
         await EnsureSuccessAsync(secondPageResponse);
         var secondPage = await DeserializeAsync<PagedResult<TicketSummaryDto>>(secondPageResponse);
 
@@ -259,7 +266,7 @@ public class TicketApiTests : IntegrationTestBase
     {
         var category = await CreateCategoryAsync("Apps");
         var department = await CreateDepartmentAsync("AppsOps", "apps@example.com");
-        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using (var appTicketResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Printer",
             Description = "Email outage",
@@ -270,14 +277,17 @@ public class TicketApiTests : IntegrationTestBase
                 Name = "App User",
                 Email = "app@example.com"
             }
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(appTicketResponse);
+        }
 
-        var descriptionSearch = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=FullContent");
+        using var descriptionSearch = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=FullContent");
         await EnsureSuccessAsync(descriptionSearch);
         var full = await DeserializeAsync<PagedResult<TicketSummaryDto>>(descriptionSearch);
         Assert.Single(full.Items);
 
-        var titleOnly = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=TitleOnly");
+        using var titleOnly = await Client.GetAsync("/tickets?SearchTerm=email&SearchScope=TitleOnly");
         await EnsureSuccessAsync(titleOnly);
         var scoped = await DeserializeAsync<PagedResult<TicketSummaryDto>>(titleOnly);
         Assert.Empty(scoped.Items);
@@ -290,7 +300,7 @@ public class TicketApiTests : IntegrationTestBase
         var department = await CreateDepartmentAsync("OpsTeam", "ops@example.com");
         var requesterActor = BuildActor("Ops Requester", "ops.requester@example.com", TicketActorType.Requester);
         var departmentActor = BuildActor("Ops Engineer", department.Members.First().Email, TicketActorType.DepartmentMember);
-        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Server issue",
             Description = "desc",
@@ -305,13 +315,13 @@ public class TicketApiTests : IntegrationTestBase
         await EnsureSuccessAsync(createResponse);
         var created = await DeserializeAsync<TicketDetailsDto>(createResponse);
 
-        var detailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
+        using var detailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
         await EnsureSuccessAsync(detailsResponse);
         var details = await DeserializeAsync<TicketDetailsDto>(detailsResponse);
         Assert.Contains(details.History, h => h.Action.Contains("Ticket created", StringComparison.OrdinalIgnoreCase));
         Assert.Single(NotificationSpy.CreatedEvents);
 
-        var prepareMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        using var prepareMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
         {
             Content = AsJson(new TicketStatusUpdateRequest
             {
@@ -321,11 +331,11 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         prepareMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(created.RowVersion));
-        var prepareResponse = await Client.SendAsync(prepareMessage);
+        using var prepareResponse = await Client.SendAsync(prepareMessage);
         await EnsureSuccessAsync(prepareResponse);
         var prepared = await DeserializeAsync<TicketDetailsDto>(prepareResponse);
 
-        var statusMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
+        using var statusMessage = new HttpRequestMessage(HttpMethod.Patch, $"/tickets/{created.Id}/status")
         {
             Content = AsJson(new TicketStatusUpdateRequest
             {
@@ -335,10 +345,13 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         statusMessage.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(prepared.RowVersion));
-        await EnsureSuccessAsync(await Client.SendAsync(statusMessage));
+        using (var statusResponse = await Client.SendAsync(statusMessage))
+        {
+            await EnsureSuccessAsync(statusResponse);
+        }
 
         Assert.Single(NotificationSpy.ResolvedEvents);
-        var resolvedDetailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
+        using var resolvedDetailsResponse = await Client.GetAsync($"/tickets/{created.Id}");
         await EnsureSuccessAsync(resolvedDetailsResponse);
         var resolvedDetails = await DeserializeAsync<TicketDetailsDto>(resolvedDetailsResponse);
         Assert.Contains(resolvedDetails.History, h => h.Action.Contains("Status changed", StringComparison.OrdinalIgnoreCase));
@@ -351,7 +364,7 @@ public class TicketApiTests : IntegrationTestBase
         var deptA = await CreateDepartmentAsync("NetworkA", "a@example.com");
         var deptB = await CreateDepartmentAsync("NetworkB", "b@example.com");
 
-        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using (var ticketAResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Router A",
             Description = "desc",
@@ -362,9 +375,12 @@ public class TicketApiTests : IntegrationTestBase
                 Name = "User A",
                 Email = "usera@example.com"
             }
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(ticketAResponse);
+        }
 
-        await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using (var ticketBResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Router B",
             Description = "desc",
@@ -375,9 +391,12 @@ public class TicketApiTests : IntegrationTestBase
                 Name = "User B",
                 Email = "userb@example.com"
             }
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(ticketBResponse);
+        }
 
-        var response = await Client.GetAsync($"/tickets?DepartmentIds={deptA.Id}");
+        using var response = await Client.GetAsync($"/tickets?DepartmentIds={deptA.Id}");
         await EnsureSuccessAsync(response);
         var result = await DeserializeAsync<PagedResult<TicketSummaryDto>>(response);
         Assert.Single(result.Items);
@@ -392,7 +411,7 @@ public class TicketApiTests : IntegrationTestBase
         var requesterActor = BuildActor("Requester", "requester@example.com", TicketActorType.Requester);
         var deptActor = BuildActor("Policy Member", department.Members.First().Email, TicketActorType.DepartmentMember);
 
-        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Policy question",
             Description = "initial body",
@@ -407,7 +426,7 @@ public class TicketApiTests : IntegrationTestBase
         await EnsureSuccessAsync(createResponse);
         var ticket = await DeserializeAsync<TicketDetailsDto>(createResponse);
 
-        var allowedUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
+        using var allowedUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
         {
             Content = AsJson(new TicketUpdateRequest
             {
@@ -425,11 +444,11 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         allowedUpdate.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(ticket.RowVersion));
-        var allowedResponse = await Client.SendAsync(allowedUpdate);
+        using var allowedResponse = await Client.SendAsync(allowedUpdate);
         await EnsureSuccessAsync(allowedResponse);
         var allowedPayload = await DeserializeAsync<TicketDetailsDto>(allowedResponse);
 
-        var forbiddenUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
+        using var forbiddenUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
         {
             Content = AsJson(new TicketUpdateRequest
             {
@@ -447,10 +466,10 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         forbiddenUpdate.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(allowedPayload.RowVersion));
-        var forbiddenResponse = await Client.SendAsync(forbiddenUpdate);
+        using var forbiddenResponse = await Client.SendAsync(forbiddenUpdate);
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenResponse.StatusCode);
 
-        var requesterUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
+        using var requesterUpdate = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
         {
             Content = AsJson(new TicketUpdateRequest
             {
@@ -468,7 +487,7 @@ public class TicketApiTests : IntegrationTestBase
             })
         };
         requesterUpdate.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(allowedPayload.RowVersion));
-        var requesterResponse = await Client.SendAsync(requesterUpdate);
+        using var requesterResponse = await Client.SendAsync(requesterUpdate);
         await EnsureSuccessAsync(requesterResponse);
     }
 
@@ -478,7 +497,7 @@ public class TicketApiTests : IntegrationTestBase
         var category = await CreateCategoryAsync("Chrono");
         var department = await CreateDepartmentAsync("ChronoDept", "chrono@example.com");
 
-        var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
+        using var createResponse = await Client.PostAsync("/tickets", AsJson(new TicketCreateRequest
         {
             Title = "Comment order",
             Description = "desc",
@@ -495,18 +514,25 @@ public class TicketApiTests : IntegrationTestBase
 
         var actor = BuildActor("Chrono Member", department.Members.First().Email, TicketActorType.DepartmentMember);
 
-        await Client.PostAsync($"/tickets/{ticket.Id}/comments", AsJson(new TicketCommentCreateRequest
+        using (var firstCommentResponse = await Client.PostAsync($"/tickets/{ticket.Id}/comments", AsJson(new TicketCommentCreateRequest
         {
             Body = "first",
             Actor = actor
-        }));
-        await Client.PostAsync($"/tickets/{ticket.Id}/comments", AsJson(new TicketCommentCreateRequest
+        })))
+        {
+            await EnsureSuccessAsync(firstCommentResponse);
+        }
+
+        using (var secondCommentResponse = await Client.PostAsync($"/tickets/{ticket.Id}/comments", AsJson(new TicketCommentCreateRequest
         {
             Body = "second",
             Actor = actor
-        }));
+        })))
+        {
+            await EnsureSuccessAsync(secondCommentResponse);
+        }
 
-        var response = await Client.GetAsync($"/tickets/{ticket.Id}/comments");
+        using var response = await Client.GetAsync($"/tickets/{ticket.Id}/comments");
         await EnsureSuccessAsync(response);
         var comments = await DeserializeAsync<List<TicketCommentDto>>(response);
         Assert.Equal(new[] { "second", "first" }, comments.Select(c => c.Body));
@@ -514,14 +540,14 @@ public class TicketApiTests : IntegrationTestBase
 
     private async Task<CategoryDto> CreateCategoryAsync(string name)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/categories")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/categories")
         {
             Content = AsJson(new CategoryCreateRequest
             {
                 Name = name
             })
         };
-        var response = await Client.SendAsync(request);
+        using var response = await Client.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
@@ -532,7 +558,7 @@ public class TicketApiTests : IntegrationTestBase
 
     private async Task<DepartmentDto> CreateDepartmentAsync(string name, string primaryEmail)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/departments")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/departments")
         {
             Content = AsJson(new DepartmentCreateRequest
             {
@@ -549,7 +575,7 @@ public class TicketApiTests : IntegrationTestBase
                 }
             })
         };
-        var response = await Client.SendAsync(request);
+        using var response = await Client.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
