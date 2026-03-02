@@ -25,7 +25,7 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "Security");
         var department = await CreateDepartmentAsync(client, "SecOps", "sec@example.com");
 
-        var response = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
+        using var response = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
         {
             Title = "XSS attempt",
             Description = "<script>alert('boom')</script> body",
@@ -54,28 +54,33 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "Ops");
         var department = await CreateDepartmentAsync(client, "OpsDept", "ops@example.com");
 
-        var tickets = Enumerable.Range(0, 5).Select(i =>
-        {
-            var message = new HttpRequestMessage(HttpMethod.Post, "/tickets")
+        var requests = Enumerable.Range(0, 5)
+            .Select(i => PostTicketAsync(client, new TicketCreateRequest
             {
-                Content = IntegrationTestBase.AsJson(new TicketCreateRequest
+                Title = $"Req {i}",
+                Description = "body",
+                CategoryId = category.Id,
+                DepartmentId = department.Id,
+                Requester = new()
                 {
-                    Title = $"Req {i}",
-                    Description = "body",
-                    CategoryId = category.Id,
-                    DepartmentId = department.Id,
-                    Requester = new()
-                    {
-                        Name = $"Requester {i}",
-                        Email = $"req{i}@example.com"
-                    }
-                })
-            };
-            return client.SendAsync(message);
-        }).ToArray();
+                    Name = $"Requester {i}",
+                    Email = $"req{i}@example.com"
+                }
+            }))
+            .ToArray();
 
-        var responses = await Task.WhenAll(tickets);
-        Assert.Contains(responses, r => r.StatusCode == HttpStatusCode.TooManyRequests);
+        var responses = await Task.WhenAll(requests);
+        try
+        {
+            Assert.Contains(responses, r => r.StatusCode == HttpStatusCode.TooManyRequests);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
     }
 
     [Fact]
@@ -86,7 +91,7 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "DBA");
         var department = await CreateDepartmentAsync(client, "DBTeam", "db@example.com");
 
-        await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
+        using (var seedResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
         {
             Title = "Database timeout",
             Description = "desc",
@@ -97,9 +102,12 @@ public class SecurityHardeningTests
                 Name = "DB User",
                 Email = "db.user@example.com"
             }
-        }));
+        })))
+        {
+            seedResponse.EnsureSuccessStatusCode();
+        }
 
-        var response = await client.GetAsync("/tickets?SearchTerm=' OR 1=1;--");
+        using var response = await client.GetAsync("/tickets?SearchTerm=' OR 1=1;--");
         response.EnsureSuccessStatusCode();
     }
 
@@ -108,7 +116,7 @@ public class SecurityHardeningTests
     {
         using var factory = new CustomWebApplicationFactory();
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/tickets?SortBy=CreatedAt&SortDirection=Desc&PageToken=this-is-not-valid");
+        using var response = await client.GetAsync("/tickets?SortBy=CreatedAt&SortDirection=Desc&PageToken=this-is-not-valid");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -120,7 +128,7 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "Backoffice");
         var department = await CreateDepartmentAsync(client, "BackofficeDept", "owner@example.com");
 
-        var createResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
+        using var createResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
         {
             Title = "Access issue",
             Description = "desc",
@@ -135,7 +143,7 @@ public class SecurityHardeningTests
         createResponse.EnsureSuccessStatusCode();
         var ticket = await DeserializeAsync<TicketDetailsDto>(createResponse);
 
-        var request = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/tickets/{ticket.Id}")
         {
             Content = IntegrationTestBase.AsJson(new TicketUpdateRequest
             {
@@ -157,7 +165,7 @@ public class SecurityHardeningTests
             })
         };
         request.Headers.TryAddWithoutValidation("If-Match", Convert.ToBase64String(ticket.RowVersion));
-        var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
@@ -169,7 +177,7 @@ public class SecurityHardeningTests
         var category = await CreateCategoryAsync(client, "Comments");
         var department = await CreateDepartmentAsync(client, "CommentsDept", "comments@example.com");
 
-        var createResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
+        using var createResponse = await client.PostAsync("/tickets", IntegrationTestBase.AsJson(new TicketCreateRequest
         {
             Title = "Need update",
             Description = "desc",
@@ -184,7 +192,7 @@ public class SecurityHardeningTests
         createResponse.EnsureSuccessStatusCode();
         var ticket = await DeserializeAsync<TicketDetailsDto>(createResponse);
 
-        var commentResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
+        using var commentResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
         {
             Body = "<script>alert('x')</script>hello",
             Actor = new TicketActorContextDto
@@ -198,7 +206,7 @@ public class SecurityHardeningTests
         var comment = await DeserializeAsync<TicketCommentDto>(commentResponse);
         Assert.DoesNotContain("<script>", comment.Body, StringComparison.OrdinalIgnoreCase);
 
-        var outsiderResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
+        using var outsiderResponse = await client.PostAsync($"/tickets/{ticket.Id}/comments", IntegrationTestBase.AsJson(new TicketCommentCreateRequest
         {
             Body = "legit",
             Actor = new TicketActorContextDto
@@ -214,14 +222,14 @@ public class SecurityHardeningTests
 
     private static async Task<CategoryDto> CreateCategoryAsync(HttpClient client, string name)
     {
-        var message = new HttpRequestMessage(HttpMethod.Post, "/categories")
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/categories")
         {
             Content = IntegrationTestBase.AsJson(new CategoryCreateRequest
             {
                 Name = name
             })
         };
-        var response = await client.SendAsync(message);
+        using var response = await client.SendAsync(message);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
@@ -232,7 +240,7 @@ public class SecurityHardeningTests
 
     private static async Task<DepartmentDto> CreateDepartmentAsync(HttpClient client, string name, string memberEmail)
     {
-        var message = new HttpRequestMessage(HttpMethod.Post, "/departments")
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/departments")
         {
             Content = IntegrationTestBase.AsJson(new DepartmentCreateRequest
             {
@@ -248,7 +256,7 @@ public class SecurityHardeningTests
                 }
             })
         };
-        var response = await client.SendAsync(message);
+        using var response = await client.SendAsync(message);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
@@ -256,6 +264,15 @@ public class SecurityHardeningTests
         }
 
         return await DeserializeAsync<DepartmentDto>(response);
+    }
+
+    private static async Task<HttpResponseMessage> PostTicketAsync(HttpClient client, TicketCreateRequest request)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/tickets")
+        {
+            Content = IntegrationTestBase.AsJson(request)
+        };
+        return await client.SendAsync(message);
     }
 
     private static async Task<T> DeserializeAsync<T>(HttpResponseMessage response)

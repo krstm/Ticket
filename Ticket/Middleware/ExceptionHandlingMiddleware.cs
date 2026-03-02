@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Threading;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,7 +29,11 @@ public class ExceptionHandlingMiddleware
         {
             await _next(context);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (!IsCriticalException(ex))
         {
             await HandleExceptionAsync(context, ex);
         }
@@ -70,5 +75,13 @@ public class ExceptionHandlingMiddleware
         context.Response.ContentType = "application/problem+json";
         context.Response.StatusCode = problem.Status ?? (int)HttpStatusCode.InternalServerError;
         await context.Response.WriteAsync(JsonSerializer.Serialize(problem));
+    }
+
+    private static bool IsCriticalException(Exception exception)
+    {
+        return exception is OutOfMemoryException
+            or StackOverflowException
+            or AccessViolationException
+            or ThreadAbortException;
     }
 }

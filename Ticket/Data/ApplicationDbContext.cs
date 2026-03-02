@@ -60,12 +60,10 @@ public class ApplicationDbContext : DbContext
             return;
         }
 
-        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
+        foreach (var entry in ChangeTracker.Entries<BaseEntity>()
+                     .Where(e => e.State is EntityState.Added or EntityState.Modified))
         {
-            if (entry.State == EntityState.Added || entry.State == EntityState.Modified)
-            {
-                entry.Property(e => e.RowVersion).CurrentValue = Guid.NewGuid().ToByteArray();
-            }
+            entry.Property(e => e.RowVersion).CurrentValue = Guid.NewGuid().ToByteArray();
         }
     }
 

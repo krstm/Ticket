@@ -15,17 +15,21 @@ public static class TicketQueryExtensions
         {
             var normalized = SearchNormalizer.NormalizeRequired(parameters.SearchTerm);
             var like = $"%{normalized}%";
-            var fullContent = parameters.SearchScope != TicketSearchScope.TitleOnly;
-
-            query = query.Where(t =>
-                EF.Functions.Like(t.TitleNormalized, like) ||
-                (fullContent && (
+            if (parameters.SearchScope == TicketSearchScope.TitleOnly)
+            {
+                query = query.Where(t => EF.Functions.Like(t.TitleNormalized, like));
+            }
+            else
+            {
+                query = query.Where(t =>
+                    EF.Functions.Like(t.TitleNormalized, like) ||
                     EF.Functions.Like(t.DescriptionNormalized, like) ||
                     (t.RequesterNameNormalized != null && EF.Functions.Like(t.RequesterNameNormalized, like)) ||
                     (t.RequesterEmailNormalized != null && EF.Functions.Like(t.RequesterEmailNormalized, like)) ||
                     (t.RecipientNameNormalized != null && EF.Functions.Like(t.RecipientNameNormalized, like)) ||
                     (t.RecipientEmailNormalized != null && EF.Functions.Like(t.RecipientEmailNormalized, like)) ||
-                    (t.ReferenceCodeNormalized != null && EF.Functions.Like(t.ReferenceCodeNormalized, like)))));
+                    (t.ReferenceCodeNormalized != null && EF.Functions.Like(t.ReferenceCodeNormalized, like)));
+            }
         }
 
         if (parameters.CategoryIds?.Count > 0)
