@@ -35,6 +35,7 @@ jobs:
       with:
         node-version: 22
         cache: 'npm'
+        cache-dependency-path: Ticket/package-lock.json
     - name: Build Frontend
       working-directory: ./Ticket
       run: |
@@ -68,6 +69,7 @@ jobs:
       with:
         node-version: 22
         cache: 'npm'
+        cache-dependency-path: Ticket/package-lock.json
 
     - name: Build Frontend
       working-directory: ./Ticket

@@ -19,6 +19,7 @@ jobs:
       with:
         node-version: 22
         cache: 'npm'
+        cache-dependency-path: Ticket/package-lock.json
 
     # 2. Frontend Build
     - name: Install NPM dependencies & Build Frontend
